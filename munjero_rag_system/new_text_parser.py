@@ -37,71 +37,60 @@ def parse_extracted_text(text_content):
         
         # --- Passage Parsing ---
         question_area_start_index = len(content_block)
-        first_question_match_in_block = re.search(r'\\d+\\.\\s', content_block)
+        # Corrected regex: r'\d+\.\s'
+        first_question_match_in_block = re.search(r'\d+\.\s', content_block)
         if first_question_match_in_block:
             question_area_start_index = first_question_match_in_block.start()
         
         passage_area_content = content_block[:question_area_start_index].strip()
         question_area_content = content_block[question_area_start_index:].strip()
+        print(f"DEBUG: Question area content for {title}: {repr(question_area_content[:200])}")
 
-        passage_label_regex = re.compile(r'(\(가|나|다|라|마)\)')
-        passage_matches = list(passage_label_regex.finditer(passage_area_content))
-
-        if not passage_matches:
-            # If no explicit (가), (나) labels are found, treat the whole block as one passage.
-            if passage_area_content:
-                current_problem_set["passages"].append({
-                    "label": None,
-                    "content": passage_area_content
-                })
-        else:
-            # If labels are found, split the passage_area_content by these labels.
-            last_passage_end = 0
-            for p_idx, p_match in enumerate(passage_matches):
-                # Content before the first label
-                if p_idx == 0 and p_match.start() > 0:
-                    content = passage_area_content[0:p_match.start()].strip()
-                    if content:
-                        current_problem_set["passages"].append({
-                            "label": None,
-                            "content": content
-                        })
-                
-                label = p_match.group(0).strip() # e.g., "(가)"
-                
-                # Content of the current passage goes from the end of this label
-                # to the start of the next label, or the end of the passage_area_content.
-                content_start = p_match.end()
-                content_end = passage_matches[p_idx+1].start() if p_idx + 1 < len(passage_matches) else len(passage_area_content)
-                content = passage_area_content[content_start:content_end].strip()
-                
-                if content:
-                    current_problem_set["passages"].append({
-                        "label": label,
-                        "content": content
-                    })
+        # Always treat the entire passage_area_content as a single passage
+        if passage_area_content:
+            current_problem_set["passages"].append({
+                "label": None,
+                "content": passage_area_content
+            })
 
         # --- Question and Option Parsing ---
-        question_line_regex = re.compile(r'(\\d+\\.\\s*(.*?)(?:\\s*\[(\\d+)점\])?)(?=\\n|\\s*[①②③④⑤])', re.DOTALL)
-        question_matches = list(question_line_regex.finditer(question_area_content))
-        print(f"DEBUG: Question matches for {title}: {len(question_matches)}")
+        # Split the question_area_content into individual question blocks
+        # The regex captures the question number (e.g., "1. ") as a delimiter
+        question_blocks = re.split(r'(\d+\.\s*)', question_area_content)
         
-        for q_idx, q_match in enumerate(question_matches):
-            full_question_line = q_match.group(1).strip()
+        # The split result will be like: ['', '1. ', 'Question 1 text and options', '2. ', 'Question 2 text and options', ...]
+        # We need to pair the question number with its content.
+        
+        # Filter out empty strings and combine number with content
+        parsed_question_blocks = []
+        for j in range(1, len(question_blocks), 2):
+            if j + 1 < len(question_blocks):
+                parsed_question_blocks.append(question_blocks[j] + question_blocks[j+1])
+
+        print(f"DEBUG: Parsed question blocks for {title}: {len(parsed_question_blocks)}")
+
+        for q_block_content in parsed_question_blocks:
+            # Extract question number, text, and points
+            question_num_match = re.match(r'(\d+\.\s*)', q_block_content)
+            question_num = question_num_match.group(1).strip() if question_num_match else None
             
-            question_num_match = re.match(r'(\\d+\\.)', full_question_line)
-            question_num = question_num_match.group(1) if question_num_match else None
-            
-            text_and_points_part = full_question_line[len(question_num):].strip() if question_num else full_question_line.strip()
-            
-            points_match = re.search(r'\[(\\d+)점\]', text_and_points_part)
+            # Remove question number from the block to get the rest of the content
+            remaining_content = q_block_content[len(question_num_match.group(0)):].strip() if question_num_match else q_block_content.strip()
+
+            points_match = re.search(r'\[(\d+)점\]', remaining_content)
             question_points = points_match.group(1) if points_match else None
             
-            question_text = re.sub(r'\\s*\[\\d+점\]', '', text_and_points_part).strip()
+            # Remove points from the remaining content to get pure question text
+            question_text_with_options = re.sub(r'\s*\[\d+점\]', '', remaining_content).strip()
 
-            options_block_start = q_match.end()
-            options_block_end = question_matches[q_idx+1].start() if q_idx + 1 < len(question_matches) else len(question_area_content)
-            options_content = question_area_content[options_block_start:options_block_end].strip()
+            # Find the start of options (first circled number)
+            first_option_match = re.search(r'[①②③④⑤]', question_text_with_options)
+            if first_option_match:
+                question_text = question_text_with_options[:first_option_match.start()].strip()
+                options_content = question_text_with_options[first_option_match.start():].strip()
+            else:
+                question_text = question_text_with_options.strip()
+                options_content = "" # No options found
 
             current_question = {
                 "number": question_num,
@@ -111,7 +100,6 @@ def parse_extracted_text(text_content):
             }
             
             # Option parsing using re.findall to get all options and their content
-            # This regex captures the label and the content up to the next label or end of string.
             option_regex = re.compile(r'([①②③④⑤])(.*?)(?=[①②③④⑤]|$)', re.DOTALL)
             option_matches = option_regex.findall(options_content)
             print(f"DEBUG: Option matches for question {question_num}: {len(option_matches)}")
