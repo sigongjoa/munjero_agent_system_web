@@ -1,4 +1,4 @@
-import pdfplumber
+import fitz  # PyMuPDF
 import re
 
 def is_header_footer_line(line):
@@ -18,12 +18,9 @@ def is_header_footer_line(line):
     # Check if the line contains mostly header/footer keywords
     for keyword in header_footer_keywords:
         if keyword in line:
-            # If the line is very short and contains a keyword, it's likely a header/footer
-            if len(line) < 30 or len(line.split()) < 5: # Heuristic for short lines
-                return True
+            return True
     
     # Check for isolated page numbers (e.g., "1", "2", "11", "131", "171")
-    # This regex looks for lines that are just numbers, possibly with spaces around them
     if re.fullmatch(r'^\s*\d{1,3}\s*$', line):
         return True
     
@@ -37,11 +34,11 @@ def is_header_footer_line(line):
 
     return False
 
-def extract_text_from_pdf_sides(pdf_path):
+def extract_raw_text_from_pdf(pdf_path):
     """
-    Extracts text from the left and right sides of each page in a PDF,
-    excluding header and footer areas, with post-processing for common patterns.
-
+    Extracts raw text from each page in a PDF using PyMuPDF's "text" method,
+    and then applies header/footer filtering.
+    
     Args:
         pdf_path (str): The absolute path to the PDF file.
 
@@ -50,47 +47,27 @@ def extract_text_from_pdf_sides(pdf_path):
     """
     full_text = []
     
-    # Define page dimensions and margins based on analysis.txt
-    # Content area bounding box (x0, y0, x1, y1)
-    content_bbox = (80, 150, 760, 950) # Adjusted based on previous attempts
-    
-    # Calculate mid-point for left and right halves
-    page_width = 842
-    mid_x = page_width / 2
-    
-    # Left half bounding box (relative to page, not content_bbox)
-    left_bbox = (content_bbox[0], content_bbox[1], mid_x, content_bbox[3])
-    
-    # Right half bounding box (relative to page, not content_bbox)
-    right_bbox = (mid_x, content_bbox[1], content_bbox[2], content_bbox[3])
-
     try:
-        with pdfplumber.open(pdf_path) as pdf:
-            for page_num, page in enumerate(pdf.pages):
-                extracted_lines = []
-
-                # Extract text from left side
-                left_content = page.crop(left_bbox)
-                left_text = left_content.extract_text()
-                if left_text:
-                    for line in left_text.split('\n'):
-                        cleaned_line = line.strip() # Ensure line is stripped
-                        if not is_header_footer_line(cleaned_line):
-                            extracted_lines.append(cleaned_line)
-                
-                # Extract text from right side
-                right_content = page.crop(right_bbox)
-                right_text = right_content.extract_text()
-                if right_text:
-                    for line in right_text.split('\n'):
-                        cleaned_line = line.strip() # Ensure line is stripped
-                        if not is_header_footer_line(cleaned_line):
-                            extracted_lines.append(cleaned_line)
-                
-                if extracted_lines:
-                    full_text.append('\n'.join(extracted_lines))
-                
-                full_text.append("--- Page End ---\n") # Separator for pages
+        doc = fitz.open(pdf_path)
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            
+            # Extract raw text from the page
+            page_text = page.get_text("text") 
+            
+            extracted_lines = []
+            if page_text:
+                for line in page_text.split('\n'):
+                    cleaned_line = line.strip()
+                    if not is_header_footer_line(cleaned_line):
+                        extracted_lines.append(cleaned_line)
+            
+            if extracted_lines:
+                full_text.append('\n'.join(extracted_lines))
+            
+            full_text.append("--- Page End ---\n") # Separator for pages
+        
+        doc.close()
 
     except Exception as e:
         return f"Error processing PDF: {e}"
@@ -102,7 +79,7 @@ if __name__ == "__main__":
     output_file_path = "/mnt/d/progress/munjero_rag_system/munjero_rag_system/extracted_text.txt"
 
     try:
-        extracted_content = extract_text_from_pdf_sides(pdf_file_path)
+        extracted_content = extract_raw_text_from_pdf(pdf_file_path) # Changed function call
         
         with open(output_file_path, "w", encoding="utf-8") as f:
             f.write(extracted_content)

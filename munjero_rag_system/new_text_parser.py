@@ -10,7 +10,7 @@ def parse_extracted_text(text_content):
     # Problem set title pattern: [X～Y] 다음 글을 읽고 물음에 답하시오.
     # This regex is designed to match the title line and capture it.
     # Using re.MULTILINE to make '^' and '$' match start/end of lines.
-    problem_set_title_regex = re.compile(r'\[\d+～\d+\] 다음 글을 읽고 물음에 답하시오\.', re.MULTILINE) # Problem set title pattern: [X～Y] 다음 글을 읽고 물음에 답하시오.
+    problem_set_title_regex = re.compile(r'[\d+～\d+] 다음 글을 읽고 물음에 답하시오.', re.MULTILINE) # Problem set title pattern: [X～Y] 다음 글을 읽고 물음에 답하시오.
     
     # Find all problem set titles and their positions.
     problem_set_matches = list(problem_set_title_regex.finditer(text_content))
@@ -36,15 +36,17 @@ def parse_extracted_text(text_content):
         }
         
         # --- Passage Parsing ---
-        question_area_start_index = len(content_block)
-        # Corrected regex: r'\d+\.\s'
-        first_question_match_in_block = re.search(r'\d+\.\s', content_block)
-        if first_question_match_in_block:
-            question_area_start_index = first_question_match_in_block.start()
+        # Find the first occurrence of a question number pattern to separate passage from questions
+        first_question_match_in_block = re.search(r'\n\d+\.\s', content_block) # Look for newline before number
         
-        passage_area_content = content_block[:question_area_start_index].strip()
-        question_area_content = content_block[question_area_start_index:].strip()
-        print(f"DEBUG: Question area content for {title}: {repr(question_area_content[:200])}")
+        if first_question_match_in_block:
+            passage_end_index = first_question_match_in_block.start()
+            passage_area_content = content_block[:passage_end_index].strip()
+            question_area_content = content_block[passage_end_index:].strip()
+        else:
+            # If no question numbers found, treat the whole block as passage
+            passage_area_content = content_block.strip()
+            question_area_content = ""
 
         # Always treat the entire passage_area_content as a single passage
         if passage_area_content:
@@ -77,11 +79,11 @@ def parse_extracted_text(text_content):
             # Remove question number from the block to get the rest of the content
             remaining_content = q_block_content[len(question_num_match.group(0)):].strip() if question_num_match else q_block_content.strip()
 
-            points_match = re.search(r'\[(\d+)점\]', remaining_content)
+            points_match = re.search(r'[(\d+)점]', remaining_content)
             question_points = points_match.group(1) if points_match else None
             
             # Remove points from the remaining content to get pure question text
-            question_text_with_options = re.sub(r'\s*\[\d+점\]', '', remaining_content).strip()
+            question_text_with_options = re.sub(r'\s*[\d+점]', '', remaining_content).strip()
 
             # Find the start of options (first circled number)
             first_option_match = re.search(r'[①②③④⑤]', question_text_with_options)
@@ -124,7 +126,7 @@ if __name__ == "__main__":
         with open(input_file_path, "r", encoding="utf-8") as f:
             extracted_content = f.read()
         
-        cleaned_content = extracted_content.replace("--- Page End ---\n", "").strip()
+        cleaned_content = extracted_content.replace("--- Page End ---", "").strip()
 
         structured_data = parse_extracted_text(cleaned_content)
         
