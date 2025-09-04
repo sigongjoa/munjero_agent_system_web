@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Munjero Agent Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .panel { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h2 { color: #0056b3; margin-top: 0; }
+        pre { background-color: #eee; padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
+        .log-entry { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
+        .log-entry:last-child { border-bottom: none; }
+        .timestamp { font-size: 0.8em; color: #666; }
+        .log-type { font-weight: bold; margin-right: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Munjero Agent Dashboard</h1>
+
+    <div class="container">
+        <div class="panel">
+            <h2>RQ Job Status</h2>
+            <div id="rq-status">
+                <p>Loading RQ status...</p>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>WebSocket Communication Log</h2>
+            <div id="websocket-logs">
+                <p>Loading WebSocket logs...</p>
+            </div>
+        </div>
+
+        <div class="panel" style="grid-column: 1 / -1;">
+            <h2>Agent Conversation Log</h2>
+            <div id="agent-logs">
+                <p>Loading Agent logs...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

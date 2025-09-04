@@ -4,3 +4,6 @@ langchain
 Flask
 PyPDF2
 pdfplumber
+rq
+websockets
+openai

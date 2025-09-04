@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  redis:
+    image: "redis:alpine"
+    ports:
+      - "6379:6379"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app # Mount the current directory into the container for development
+    environment:
+      - PYTHONPATH=/app/munjero_rag_system
+    depends_on:
+      - redis
+
+  rq_worker:
+    extends:
+      service: app
+    command: rq worker -u redis://redis:6379
+    depends_on:
+      - redis
+
+  websocket_server:
+    extends:
+      service: app
+    command: python munjero_rag_system/websocket_server.py # Path updated
+    ports:
+      - "8765:8765"
+
+  agent_app:
+    extends:
+      service: app
+    command: python munjero_rag_system/agent_app.py # Path updated
+    depends_on:
+      - websocket_server
+
+  dashboard:
+    extends:
+      service: app
+    command: python munjero_rag_system/dashboard/dashboard_app.py # Path updated
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
