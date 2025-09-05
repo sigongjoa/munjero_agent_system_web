@@ -3,42 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Munjero Agent Dashboard</title>
+    <title>ChatGPT Remote Control</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
-        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .panel { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h2 { color: #0056b3; margin-top: 0; }
-        pre { background-color: #eee; padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
-        .log-entry { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
-        .log-entry:last-child { border-bottom: none; }
-        .timestamp { font-size: 0.8em; color: #666; }
-        .log-type { font-weight: bold; margin-right: 5px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 20px; background-color: #f0f2f5; color: #1c1e21; }
+        h1, h2 { color: #1877f2; }
+        .container { max-width: 800px; margin: auto; }
+        .panel { background-color: #fff; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        #control-form { display: flex; gap: 10px; }
+        #control-form input { flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        #control-form button { padding: 10px 20px; border: none; background-color: #1877f2; color: white; border-radius: 4px; cursor: pointer; }
+        #control-form button:hover { background-color: #166fe5; }
+        #response-area { margin-top: 15px; padding: 15px; background-color: #f5f5f5; border-radius: 4px; min-height: 50px; white-space: pre-wrap; word-wrap: break-word; }
+        .status-check button { padding: 8px 12px; margin-left: 10px; border: 1px solid #ddd; background-color: #f0f2f5; border-radius: 4px; cursor: pointer; }
+        #extension-status { margin-top: 10px; font-weight: bold; }
+        .status-connected { color: #31a24c; }
+        .status-disconnected { color: #fa383e; }
     </style>
 </head>
 <body>
-    <h1>Munjero Agent Dashboard</h1>
-
     <div class="container">
+        <h1>ChatGPT Remote Control</h1>
+
         <div class="panel">
-            <h2>RQ Job Status</h2>
-            <div id="rq-status">
-                <p>Loading RQ status...</p>
+            <h2>System Status</h2>
+            <div class="status-check">
+                <span>Extension Connection:</span>
+                <button id="check-extension-status">Check</button>
+                <span id="extension-status"></span>
             </div>
         </div>
 
         <div class="panel">
-            <h2>WebSocket Communication Log</h2>
-            <div id="websocket-logs">
-                <p>Loading WebSocket logs...</p>
-            </div>
-        </div>
-
-        <div class="panel" style="grid-column: 1 / -1;">
-            <h2>Agent Conversation Log</h2>
-            <div id="agent-logs">
-                <p>Loading Agent logs...</p>
-            </div>
+            <h2>Send Message to ChatGPT</h2>
+            <form id="control-form">
+                <input type="text" id="prompt-input" placeholder="Enter text to send to ChatGPT..." required>
+                <button type="submit">Send</button>
+            </form>
+            
+            <h2>Response from ChatGPT</h2>
+            <div id="response-area">Waiting for response...</div>
         </div>
     </div>
 

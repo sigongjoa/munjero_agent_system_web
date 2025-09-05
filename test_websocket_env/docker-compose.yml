@@ -4,7 +4,7 @@ services:
   redis:
     image: "redis:alpine"
     ports:
-      - "6380:6379"
+      - "6381:6379"
 
   # Base service definition for other Python services to extend
   app:
@@ -29,11 +29,19 @@ services:
     extends:
       service: app
     command: python /app/munjero_rag_system/websocket_server.py
-    ports:
-      - "8765:8765"
+    # Removed ports section as Nginx will proxy
     mem_limit: 512m # Added memory limit
     depends_on:
       - redis
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "8080:80" # Expose Nginx on host port 8080
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro # Mount Nginx config
+    depends_on:
+      - websocket_server # Nginx depends on the websocket server
 
   agent_app:
     extends:
@@ -47,6 +55,6 @@ services:
       service: app
     command: python /app/munjero_rag_system/dashboard/dashboard_app.py
     ports:
-      - "5000:5000"
+      - "5001:5000"
     depends_on:
       - redis

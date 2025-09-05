@@ -1,40 +1,49 @@
 // content.js
-// This script runs in the context of the ChatGPT page.
-// It can interact with the DOM of the ChatGPT page.
+console.log("Ext_CT: Munjero Agent Bridge: content.js loaded on", window.location.href);
 
-console.log("Munjero Agent Bridge: content.js loaded on", window.location.href);
-
-// Example: Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log("Ext_CT: Received message from background script:", message.type);
     if (message.type === "SEND_TO_CHATGPT") {
-        console.log("Content script received message to send to ChatGPT:", message.payload);
-        // Here, you would typically interact with the ChatGPT page's DOM
-        // For example, typing into an input field or clicking a button.
-        // Due to security restrictions on chat.openai.com, direct DOM manipulation
-        // might be limited. We might need to use chrome.scripting.executeScript
-        // from the background script for more privileged operations.
+        console.log("Ext_CT: Content script received message to send to ChatGPT:", message.payload);
+        
+        // Find the textarea for input
+        const textarea = document.getElementById('prompt-textarea');
+        
+        if (!textarea) {
+            console.error('Ext_CT: ChatGPT textarea with id "prompt-textarea" not found.');
+            sendResponse({ status: "Error", error: "Textarea not found" });
+            return; // Stop execution if textarea is not found
+        }
+        console.log("Ext_CT: Textarea found.");
 
-        // For now, just log and acknowledge.
-        alert(`Received from Agent: ${message.payload}`); // For demonstration
-        sendResponse({ status: "Message received by content script" });
+        // Set the value of the textarea
+        textarea.value = message.payload;
+        console.log("Ext_CT: Textarea value set.");
+
+        // Dispatch an input event. This is crucial for websites like ChatGPT (built with React)
+        // to recognize the change in the textarea.
+        const inputEvent = new Event('input', { bubbles: true });
+        textarea.dispatchEvent(inputEvent);
+        console.log("Ext_CT: Input event dispatched.");
+
+        // Find the send button. It's typically a <button> element near the textarea.
+        // We look for a button that is not disabled, which usually happens after text is entered.
+        // This selector might need adjustment if ChatGPT's UI changes.
+        const sendButton = textarea.parentElement.querySelector("button:not([disabled])");
+
+        if (sendButton) {
+            console.log('Ext_CT: Send button found, clicking it.');
+            sendButton.click();
+            sendResponse({ status: "Message sent successfully" });
+            console.log("Ext_CT: Send button clicked.");
+        } else {
+            console.error('Ext_CT: ChatGPT send button not found or it is disabled.');
+            sendResponse({ status: "Error", error: "Send button not found" });
+        }
     }
 });
 
-// Example: Send messages from the content script to the background script
-// This could be used to send ChatGPT's output back to the Agent AI.
-function sendMessageToBackground(data) {
-    chrome.runtime.sendMessage({ type: "CHATGPT_OUTPUT", payload: data });
-}
-
-// You might want to observe changes in the ChatGPT page's DOM
-// and send relevant information back to the background script.
-// For example, when a new response appears in the chat.
-// const observer = new MutationObserver((mutations) => {
-//     for (let mutation of mutations) {
-//         if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-//             // Check for new chat messages and send them to background
-//             // sendMessageToBackground("New chat message detected!");
-//         }
-//     }
-// });
-// observer.observe(document.body, { childList: true, subtree: true });
+// Example: Send a message to the background script when the page loads
+// This can be useful for letting the agent know the content script is ready.
+console.log("Ext_CT: Sending CHATGPT_OUTPUT (content script loaded) to background.");
+chrome.runtime.sendMessage({ type: "CHATGPT_OUTPUT", payload: "Content script loaded and ready." });

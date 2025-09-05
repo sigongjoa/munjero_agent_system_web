@@ -1,57 +1,70 @@
-// static/js/dashboard.js
+document.addEventListener('DOMContentLoaded', () => {
+    const controlForm = document.getElementById('control-form');
+    const promptInput = document.getElementById('prompt-input');
+    const responseArea = document.getElementById('response-area');
+    const checkExtensionBtn = document.getElementById('check-extension-status');
+    const extensionStatusSpan = document.getElementById('extension-status');
 
-const rqStatusDiv = document.getElementById('rq-status');
-const websocketLogsDiv = document.getElementById('websocket-logs');
-const agentLogsDiv = document.getElementById('agent-logs');
-
-async function fetchAndRenderData() {
-    // Fetch RQ Status
-    try {
-        const rqResponse = await fetch('/api/rq_status');
-        const rqData = await rqResponse.json();
-        rqStatusDiv.innerHTML = `
-            <p>Default Queue Jobs: ${rqData.default_queue_jobs}</p>
-            <p>Started Workers: ${rqData.started_workers}</p>
-        `;
-    } catch (error) {
-        console.error('Error fetching RQ status:', error);
-        rqStatusDiv.innerHTML = '<p>Error loading RQ status.</p>';
+    async function checkExtensionStatus() {
+        try {
+            extensionStatusSpan.textContent = 'Checking...';
+            const response = await fetch('/api/extension_status');
+            const data = await response.json();
+            extensionStatusSpan.textContent = data.message;
+            if (data.status === 'connected') {
+                extensionStatusSpan.className = 'status-connected';
+            } else {
+                extensionStatusSpan.className = 'status-disconnected';
+            }
+        } catch (error) {
+            extensionStatusSpan.textContent = 'Error checking status.';
+            extensionStatusSpan.className = 'status-disconnected';
+        }
     }
 
-    // Fetch WebSocket Logs
-    try {
-        const wsResponse = await fetch('/api/websocket_logs');
-        const wsData = await wsResponse.json();
-        websocketLogsDiv.innerHTML = wsData.map(log => `
-            <div class="log-entry">
-                <span class="timestamp">${log.timestamp}</span>
-                <span class="log-type">[${log.type.toUpperCase()}]</span>
-                ${log.message}
-            </div>
-        `).join('');
-    } catch (error) {
-        console.error('Error fetching WebSocket logs:', error);
-        websocketLogsDiv.innerHTML = '<p>Error loading WebSocket logs.</p>';
+    async function handleControlSubmit(event) {
+        event.preventDefault();
+        const prompt = promptInput.value;
+        if (!prompt) return;
+
+        responseArea.textContent = 'Sending command to extension...';
+
+        try {
+            // 1. Send the prompt to the extension
+            const sendResponse = await fetch('/api/direct_send_to_extension', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: prompt }),
+            });
+
+            if (!sendResponse.ok) {
+                throw new Error('Failed to send command to the backend.');
+            }
+
+            promptInput.value = '';
+            responseArea.textContent = 'Command sent. Waiting for response from ChatGPT...';
+
+            // 2. Wait for the response from the extension
+            const getResponse = await fetch('/api/get_extension_response');
+            const responseData = await getResponse.json();
+
+            if (responseData.error) {
+                throw new Error(responseData.error);
+            }
+
+            // Assuming the response from the extension has a 'payload' field
+            responseArea.textContent = responseData.payload || JSON.stringify(responseData, null, 2);
+
+        } catch (error) {
+            console.error('Error in send/receive flow:', error);
+            responseArea.textContent = `Error: ${error.message}`;
+        }
     }
 
-    // Fetch Agent Logs
-    try {
-        const agentResponse = await fetch('/api/agent_logs');
-        const agentData = await agentResponse.json();
-        agentLogsDiv.innerHTML = agentData.map(log => `
-            <div class="log-entry">
-                <span class="timestamp">${log.timestamp}</span>
-                <span class="log-type">[${log.type.toUpperCase()}]</span>
-                ${log.message}
-                ${log.details ? `<pre>${JSON.stringify(log.details, null, 2)}</pre>` : ''}
-            </div>
-        `).join('');
-    } catch (error) {
-        console.error('Error fetching Agent logs:', error);
-        agentLogsDiv.innerHTML = '<p>Error loading Agent logs.</p>';
-    }
-}
+    // Event Listeners
+    controlForm.addEventListener('submit', handleControlSubmit);
+    checkExtensionBtn.addEventListener('click', checkExtensionStatus);
 
-// Fetch data initially and then every 3 seconds
-fetchAndRenderData();
-setInterval(fetchAndRenderData, 3000);
+    // Initial Status Check
+    checkExtensionStatus();
+});

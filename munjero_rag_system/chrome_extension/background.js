@@ -2,34 +2,38 @@
 // This is the service worker for the Chrome Extension.
 // It runs in the background and handles events and communication.
 
-console.log("Munjero Agent Bridge: background.js loaded.");
+console.log("Ext_BG: Munjero Agent Bridge: background.js loaded.");
 
-const WEBSOCKET_SERVER_URL = "ws://localhost:8000/ws"; // Placeholder for your Agent AI WebSocket server
+const WEBSOCKET_SERVER_URL = "ws://127.0.0.1:8080/ws"; // Connect to the Nginx proxied WebSocket server
 let websocket;
 
 function connectWebSocket() {
+    console.log("Ext_BG: Attempting to connect WebSocket to: " + WEBSOCKET_SERVER_URL);
     websocket = new WebSocket(WEBSOCKET_SERVER_URL);
 
     websocket.onopen = () => {
-        console.log("WebSocket connected.");
+        console.log("Ext_BG: WebSocket connected.");
         // Send a message to the Agent AI when connected
         websocket.send(JSON.stringify({ type: "EXTENSION_READY", message: "Chrome Extension is ready." }));
+        console.log("Ext_BG: Sent EXTENSION_READY message.");
     };
 
     websocket.onmessage = (event) => {
-        console.log("WebSocket message received:", event.data);
+        console.log("Ext_BG: WebSocket message received:", event.data);
         const data = JSON.parse(event.data);
 
         if (data.type === "AGENT_COMMAND") {
-            // Example: Agent AI wants to send a message to ChatGPT page
+            console.log("Ext_BG: Received AGENT_COMMAND:", data.command);
             if (data.command === "send_message_to_chatgpt") {
                 const prompt = data.args.prompt;
+                console.log("Ext_BG: Sending SEND_TO_CHATGPT to content script.");
                 // Send message to content script (which is injected into ChatGPT page)
                 chrome.tabs.query({ url: "https://chat.openai.com/*" }, (tabs) => {
                     if (tabs.length > 0) {
                         chrome.tabs.sendMessage(tabs[0].id, { type: "SEND_TO_CHATGPT", payload: prompt });
+                        console.log("Ext_BG: Message sent to ChatGPT tab.");
                     } else {
-                        console.warn("ChatGPT tab not found.");
+                        console.warn("Ext_BG: ChatGPT tab not found.");
                         // Optionally, send an error back to the Agent AI
                     }
                 });
@@ -38,14 +42,16 @@ function connectWebSocket() {
     };
 
     websocket.onclose = (event) => {
-        console.log("WebSocket disconnected:", event.code, event.reason);
+        console.log(`Ext_BG: WebSocket disconnected: Code ${event.code}, Reason: ${event.reason}`);
         // Attempt to reconnect after a delay
         setTimeout(connectWebSocket, 5000);
+        console.log("Ext_BG: Attempting to reconnect in 5 seconds.");
     };
 
     websocket.onerror = (error) => {
-        console.error("WebSocket error:", error);
+        console.error("Ext_BG: WebSocket error:", error);
         websocket.close();
+        console.log("Ext_BG: WebSocket closed due to error.");
     };
 }
 
@@ -54,13 +60,15 @@ connectWebSocket();
 
 // Listen for messages from content scripts (e.g., ChatGPT page output)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log("Ext_BG: Received message from content script:", message.type);
     if (message.type === "CHATGPT_OUTPUT") {
-        console.log("Background script received ChatGPT output:", message.payload);
+        console.log("Ext_BG: Background script received ChatGPT output:", message.payload);
         // Send this output to the Agent AI via WebSocket
         if (websocket && websocket.readyState === WebSocket.OPEN) {
             websocket.send(JSON.stringify({ type: "CHATGPT_OUTPUT", payload: message.payload }));
+            console.log("Ext_BG: Sent CHATGPT_OUTPUT to WebSocket.");
         } else {
-            console.warn("WebSocket not open, cannot send ChatGPT output to Agent AI.");
+            console.warn("Ext_BG: WebSocket not open, cannot send ChatGPT output to Agent AI.");
         }
         sendResponse({ status: "Output received by background script" });
     }
@@ -75,9 +83,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 //         args: args
 //     }, (results) => {
 //         if (chrome.runtime.lastError) {
-//             console.error("Script execution failed:", chrome.runtime.lastError.message);
+//             console.error("Ext_BG: Script execution failed:", chrome.runtime.lastError.message);
 //         } else {
-//             console.log("Script execution results:", results);
+//             console.log("Ext_BG: Script execution results:", results);
 //         }
 //     });
 // }
