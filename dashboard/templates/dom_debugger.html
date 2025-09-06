@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DOM Debugger</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>DOM Debugger</h1>
+        <p>Enter a URL to fetch its DOM structure and inspect elements.</p>
+
+        <div class="input-group">
+            <button id="captureDomButton">Capture Current Page DOM (via Extension)</button>
+        </div>
+
+        <div class="dom-output">
+            <h2>Fetched HTML: <span id="lastUpdated" style="font-size: 0.8em; color: #666;"></span></h2>
+            <textarea id="domContent" readonly rows="20" cols="80"></textarea>
+        </div>
+
+        <div class="element-inspector">
+            <h2>Identified Elements:</h2>
+            <div id="identifiedElements">
+                <p>Capture DOM via extension to see identified elements here.</p>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Agent Interaction Guidance</h2>
+            <p>Once you have identified the target text fields (input/textarea) using their <code>id</code>, <code>name</code>, or <code>selector</code>, you can use this information to programmatically interact with the web page through your agent.</p>
+            <p><strong>To send data to a text field:</strong></p>
+            <p>Your agent would typically execute JavaScript in the browser context (e.g., via the Chrome Extension) to find the element and set its value:</p>
+            <pre><code>document.querySelector('#elementId').value = 'Your text here';</code></pre>
+            <p>Or, if using a name attribute:</p>
+            <pre><code>document.querySelector('[name="elementName"]').value = 'Your text here';</code></pre>
+            <p><strong>To retrieve generated text from a field:</strong></p>
+            <p>Similarly, your agent can read the value of a field:</p>
+            <pre><code>const generatedText = document.querySelector('#resultFieldId').value;</code></pre>
+            <p>Or, for content within a div/span:</p>
+            <pre><code>const generatedText = document.querySelector('.resultDivClass').innerText;</code></pre>
+            <p>This retrieved text can then be passed back to your Python agent for further processing or RAG operations.</p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script>
+        function displayDom(data) {
+            if (data.error) {
+                document.getElementById('domContent').value = 'Error: ' + data.error;
+                document.getElementById('identifiedElements').innerHTML = '<p>Error fetching elements.</p>';
+            } else {
+                document.getElementById('domContent').value = data.html;
+                const identifiedElementsDiv = document.getElementById('identifiedElements');
+                identifiedElementsDiv.innerHTML = ''; // Clear previous content
+
+                if (data.input_fields && data.input_fields.length > 0) {
+                    data.input_fields.forEach(field => {
+                        const p = document.createElement('p');
+                        p.innerHTML = `
+                            <strong>Tag:</strong> ${field.tag}<br>
+                            <strong>Type:</strong> ${field.type}<br>
+                            <strong>Name:</strong> ${field.name || 'N/A'}<br>
+                            <strong>ID:</strong> ${field.id || 'N/A'}<br>
+                            <strong>Class:</strong> ${field.class ? field.class.join(' ') : 'N/A'}<br>
+                            <strong>Placeholder:</strong> ${field.placeholder || 'N/A'}<br>
+                            <strong>Value:</strong> ${field.value || 'N/A'}<br>
+                            <strong>Selector:</strong> <code>${field.selector || 'N/A'}</code>
+                        `;
+                        identifiedElementsDiv.appendChild(p);
+                    });
+                } else {
+                    identifiedElementsDiv.innerHTML = '<p>No input or textarea elements found.</p>';
+                }
+                document.getElementById('lastUpdated').textContent = ` (Last updated: ${new Date().toLocaleTimeString()})`;
+            }
+        }
+
+        async function pollDomUpdates() {
+            try {
+                const response = await fetch('/api/get-last-received-dom');
+                const data = await response.json();
+                displayDom(data);
+            } catch (error) {
+                // console.error('Error polling for DOM updates:', error);
+                // document.getElementById('domContent').value = 'Error loading last DOM: ' + error.message;
+                // document.getElementById('identifiedElements').innerHTML = '<p>Error loading last DOM.</p>';
+            }
+        }
+
+        // Initial load
+        window.addEventListener('load', () => {
+            document.getElementById('domContent').value = 'Loading last captured DOM...';
+            pollDomUpdates();
+            // Poll every 3 seconds
+            setInterval(pollDomUpdates, 3000);
+        });
+
+        // Button to trigger DOM capture via extension
+        document.getElementById('captureDomButton').addEventListener('click', async () => {
+            document.getElementById('domContent').value = 'Requesting DOM capture from extension...';
+            document.getElementById('identifiedElements').innerHTML = '<p>Waiting for DOM from extension...</p>';
+
+            alert("Please open the Chrome Extension popup on the target page and trigger DOM capture from there.");
+            document.getElementById('domContent').value = 'Please trigger DOM capture from the Chrome Extension popup.';
+            document.getElementById('identifiedElements').innerHTML = '<p>Awaiting DOM capture from extension.</p>';
+        });
+    </script>
+</body>
+</html>

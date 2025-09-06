@@ -72,21 +72,46 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.warn("Ext_BG: WebSocket not open, cannot send ChatGPT output to Agent AI.");
         }
         sendResponse({ status: "Output received by background script" });
+    } else if (message.type === "TRIGGER_DOM_CAPTURE") {
+        console.log("Ext_BG: Received TRIGGER_DOM_CAPTURE message.");
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs.length > 0) {
+                const tabId = tabs[0].id;
+                chrome.scripting.executeScript({
+                    target: { tabId: tabId },
+                    function: () => {
+                        return {
+                            dom: document.documentElement.outerHTML,
+                            url: window.location.href
+                        };
+                    }
+                }, (results) => {
+                    if (chrome.runtime.lastError) {
+                        console.error("Ext_BG: Error executing script:", chrome.runtime.lastError.message);
+                        sendResponse({ status: "Error", error: chrome.runtime.lastError.message });
+                    } else {
+                        const { dom, url } = results[0].result;
+                        fetch('http://localhost:5001/api/receive-dom-from-extension', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ dom, url })
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            console.log("Ext_BG: DOM sent to dashboard response:", data);
+                            sendResponse({ status: "Success", response: data });
+                        })
+                        .catch(error => {
+                            console.error("Ext_BG: Error sending DOM to dashboard:", error);
+                            sendResponse({ status: "Error", error: error.message });
+                        });
+                    }
+                });
+            } else {
+                console.warn("Ext_BG: No active tab found to capture DOM.");
+                sendResponse({ status: "Error", error: "No active tab found." });
+            }
+        });
+        return true; // Indicate that sendResponse will be called asynchronously
     }
 });
-
-// Example of using chrome.scripting.executeScript (more privileged DOM access)
-// This would typically be triggered by a message from the Agent AI
-// function executeScriptInTab(tabId, func, args) {
-//     chrome.scripting.executeScript({
-//         target: { tabId: tabId },
-//         function: func,
-//         args: args
-//     }, (results) => {
-//         if (chrome.runtime.lastError) {
-//             console.error("Ext_BG: Script execution failed:", chrome.runtime.lastError.message);
-//         } else {
-//             console.log("Ext_BG: Script execution results:", results);
-//         }
-//     });
-// }
