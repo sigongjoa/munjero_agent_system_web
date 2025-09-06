@@ -1,103 +1,107 @@
-
 import asyncio
 import websockets
 import json
-import redis
+import redis.asyncio as redis # Use asyncio version of redis
 import datetime
-import sys # Import sys for flush
+import sys
+import logging
 
+# Configure detailed logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    stream=sys.stdout,
+    format='[%(levelname)s] %(name)s: %(message)s'
+)
+
+# --- Global State ---
+# Redis client will be initialized in main()
+redis_client = None
 connected_clients = set()
-
-# Redis client
-redis_client = redis.Redis(host='redis', port=6379, db=0)
-
-# Redis keys
 AGENT_COMMANDS_LIST = 'agent_commands_list'
 EXTENSION_RESPONSES_LIST = 'extension_responses_list'
 EXTENSION_STATUS_KEY = 'extension_connection_status'
 
-def log_to_redis(log_type: str, message: str):
-    timestamp = datetime.datetime.now().isoformat()
-    log_entry = {"timestamp": timestamp, "type": log_type, "message": message}
-    redis_client.lpush('websocket_logs', json.dumps(log_entry))
-    redis_client.ltrim('websocket_logs', 0, 99)
-    print(f"WS_Server: Logged to Redis - Type: {log_type}, Message: {message}", flush=True, file=sys.stderr)
-
-async def update_connection_status():
-    print("WS_Server: Starting update_connection_status task.", flush=True, file=sys.stderr)
-    while True:
-        if connected_clients:
-            redis_client.set(EXTENSION_STATUS_KEY, 'connected', ex=15)
-            print("WS_Server: Set extension status to connected.", flush=True, file=sys.stderr)
-        else:
-            redis_client.delete(EXTENSION_STATUS_KEY)
-            print("WS_Server: Deleted extension status (no clients).", flush=True, file=sys.stderr)
-        await asyncio.sleep(10)
-
+# --- WebSocket Connection Handler ---
 async def register_client(websocket):
-    print(f"WS_Server: Client connected: {websocket.remote_address}", flush=True, file=sys.stderr)
+    logging.info(f"Connection handler started for {websocket.remote_address}")
     connected_clients.add(websocket)
-    redis_client.set(EXTENSION_STATUS_KEY, 'connected', ex=15)
-    log_to_redis("info", f"Extension connected: {websocket.remote_address}")
+    await redis_client.set(EXTENSION_STATUS_KEY, 'connected', ex=15)
+    logging.info(f"Client {websocket.remote_address} connected. Total clients: {len(connected_clients)}")
+
     try:
         async for message in websocket:
-            try: # Added inner try block
+            logging.info(f"<- Received message from {websocket.remote_address}: {message}")
+            try:
                 data = json.loads(message)
-                print(f"WS_Server: Received message from client: {data}", flush=True, file=sys.stderr)
-                log_to_redis("received", f"From extension: {data}")
-                redis_client.lpush(EXTENSION_RESPONSES_LIST, json.dumps(data))
-                print(f"WS_Server: Pushed response to EXTENSION_RESPONSES_LIST: {data}", flush=True, file=sys.stderr)
-            except Exception as e: # Catch and log errors during message processing
-                log_to_redis("error", f"Error processing message from {websocket.remote_address}: {e} - Message: {message}")
-                print(f"WS_Server: Error processing message from {websocket.remote_address}: {e}", flush=True, file=sys.stderr)
+                await redis_client.lpush(EXTENSION_RESPONSES_LIST, json.dumps(data))
+                logging.debug(f"Pushed message from {websocket.remote_address} to Redis list '{EXTENSION_RESPONSES_LIST}'")
+            except json.JSONDecodeError:
+                logging.warning(f"Received non-JSON message from {websocket.remote_address}: {message}")
+            except Exception as e:
+                logging.error(f"Error processing message from {websocket.remote_address}: {e}", exc_info=True)
+
+    except websockets.exceptions.ConnectionClosed as e:
+        logging.info(f"Connection with {websocket.remote_address} closed cleanly: {e}")
+    except Exception as e:
+        logging.error(f"An error occurred with connection {websocket.remote_address}: {e}", exc_info=True)
     finally:
         connected_clients.remove(websocket)
-        redis_client.delete(EXTENSION_STATUS_KEY)
-        log_to_redis("info", f"Extension disconnected: {websocket.remote_address}")
-        print(f"WS_Server: Client disconnected: {websocket.remote_address}", flush=True, file=sys.stderr)
+        if not connected_clients:
+            await redis_client.delete(EXTENSION_STATUS_KEY)
+            logging.info("Last client disconnected. Cleared extension status from Redis.")
+        logging.info(f"Client {websocket.remote_address} disconnected. Total clients: {len(connected_clients)}")
+        logging.info(f"Connection handler finished for {websocket.remote_address}")
 
+# --- Redis Queue Listener and Broadcaster ---
 async def websocket_sender():
-    print("WS_Server: Starting websocket_sender task.", flush=True, file=sys.stderr)
+    logging.info(f"Starting websocket_sender task to listen on Redis list '{AGENT_COMMANDS_LIST}'...")
     while True:
         try:
-            print("WS_Server: Waiting for command from AGENT_COMMANDS_LIST...", flush=True, file=sys.stderr)
-            _, command_json = redis_client.brpop(AGENT_COMMANDS_LIST, timeout=0)
-            command_data = json.loads(command_json)
-            print(f"WS_Server: Popped command from AGENT_COMMANDS_LIST: {command_data}", flush=True, file=sys.stderr)
+            logging.debug("Waiting for command from Redis (blocking pop)...")
+            # Use await for the async brpop
+            _, command_json = await redis_client.brpop(AGENT_COMMANDS_LIST, timeout=0)
+            logging.info(f"<- Popped command from Redis: {command_json}")
+
+            if not connected_clients:
+                logging.warning("No clients connected. Re-queuing command.")
+                await redis_client.rpush(AGENT_COMMANDS_LIST, command_json)
+                await asyncio.sleep(1)
+                continue
 
             if connected_clients:
-                print(f"WS_Server: Sending command to {len(connected_clients)} connected clients.", flush=True, file=sys.stderr)
-                await asyncio.gather(*[client.send(json.dumps(command_data)) for client in connected_clients])
-                log_to_redis("sent", f"To extension: {command_data}")
-                print("WS_Server: Command sent to clients.", flush=True, file=sys.stderr)
-            else:
-                log_to_redis("warning", "No extension connected. Command put back to queue.")
-                redis_client.rpush(AGENT_COMMANDS_LIST, command_json)
-                print("WS_Server: No clients connected. Command pushed back to queue.", flush=True, file=sys.stderr)
-        except websockets.exceptions.ConnectionClosed:
-            log_to_redis("warning", "A client disconnected during send.")
-            print("WS_Server: Client disconnected during send.", flush=True, file=sys.stderr)
-        except Exception as e:
-            log_to_redis("error", f"Error in sender: {e}")
-            print(f"WS_Server: Error in sender: {e}", flush=True, file=sys.stderr)
+                logging.debug(f"Broadcasting command to {len(connected_clients)} client(s)...")
+                await asyncio.gather(*[client.send(command_json) for client in connected_clients])
+                logging.info(f"-> Sent command to {len(connected_clients)} client(s): {command_json}")
+
+        except redis.exceptions.ConnectionError as e:
+            logging.error(f"Redis connection error in websocket_sender: {e}. Retrying in 5s.", exc_info=True)
             await asyncio.sleep(5)
+        except Exception as e:
+            logging.error(f"An error occurred in websocket_sender: {e}", exc_info=True)
+            await asyncio.sleep(1)
 
+# --- Main Application ---
 async def main():
-    print(">>> WS_Server: websocket_server.py started <<<", flush=True, file=sys.stderr)
+    global redis_client
+    logging.info("Starting main application coroutine...")
+    
+    # --- Redis Client Setup ---
     try:
-        async with websockets.serve(register_client, "0.0.0.0", 8765):
-            print("WS_Server: !!! websockets.serve call completed !!!", flush=True, file=sys.stderr)
-            print("WS_Server: WebSocket server listening on ws://0.0.0.0:8765", flush=True, file=sys.stderr)
+        logging.info("Connecting to Redis on host 'redis'...")
+        redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
+        await redis_client.ping() # Use await
+        logging.info("Redis connection successful.")
+    except redis.exceptions.ConnectionError as e:
+        logging.error(f"Could not connect to Redis: {e}", exc_info=True)
+        sys.exit(1)
 
-            sender_task = asyncio.create_task(websocket_sender())
-            status_task = asyncio.create_task(update_connection_status())
+    sender_task = asyncio.create_task(websocket_sender())
+    logging.info("websocket_sender task created.")
 
-            await asyncio.Future()  # run forever
-    except Exception as e:
-        print(f"WS_Server: Error binding WebSocket server: {e}", flush=True, file=sys.stderr)
+    async with websockets.serve(register_client, "0.0.0.0", 8765):
+        logging.info("WebSocket server startup complete. Listening on 0.0.0.0:8765")
+        await asyncio.Future()  # run forever
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except Exception as e:
-        print(f"WS_Server: Error starting WebSocket server: {e}", flush=True, file=sys.stderr)
+    logging.info("Starting WebSocket server application...")
+    asyncio.run(main())

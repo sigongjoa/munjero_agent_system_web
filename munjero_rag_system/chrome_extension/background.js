@@ -13,6 +13,7 @@ function connectWebSocket() {
 
     websocket.onopen = () => {
         console.log("Ext_BG: WebSocket connected.");
+        console.log("✅ WebSocket connection established successfully!"); // Add clear success log
         // Send a message to the Agent AI when connected
         websocket.send(JSON.stringify({ type: "EXTENSION_READY", message: "Chrome Extension is ready." }));
         console.log("Ext_BG: Sent EXTENSION_READY message.");
