@@ -48,6 +48,20 @@ services:
     volumes:
       - .:/app # Mount for live changes during development
 
+  main_flask_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python src/app.py
+    ports:
+      - "5001:5001"
+    depends_on:
+      - redis
+    networks:
+      - munjero_network
+    volumes:
+      - .:/app # Mount for live changes during development
+
 networks:
   munjero_network:
     driver: bridge

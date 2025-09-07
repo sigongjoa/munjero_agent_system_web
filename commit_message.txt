@@ -1,0 +1,19 @@
+feat: Implement robust ChatGPT interaction via Chrome Extension
+
+This commit addresses several issues to enable reliable interaction with ChatGPT via the Chrome Extension:
+
+- **Fixed Chrome Extension DOM manipulation:**
+  - Updated `content.js` to use `document.execCommand("insertText")` for typing into ChatGPT's ProseMirror `contenteditable` div, ensuring React recognizes input changes.
+  - Implemented `MutationObserver` in `content.js` to reliably detect when the ChatGPT send button appears and is enabled, replacing the less robust `setInterval` polling.
+  - Added `simulateTyping` and `simulateClick` helper functions for more realistic event simulation.
+- **Improved Chrome Extension message passing:**
+  - Implemented a content script readiness and message queuing mechanism in `background.js` to ensure messages are only sent to `content.js` when it's ready to receive them, resolving "Receiving end does not exist" errors.
+  - Modified `background.js` to use a more flexible `chrome.tabs.query` to find ChatGPT tabs (supporting both `chatgpt.com` and `chat.openai.com`).
+  - Added `host_permissions` and `all_frames: true`, `run_at: "document_idle"` to `manifest.json` for improved content script injection reliability across different ChatGPT page structures and frames.
+- **Fixed Dashboard `IndentationError`:**
+  - Recreated `dashboard/dashboard_app.py` to resolve persistent `IndentationError`s caused by incorrect indentation of the `if __name__ == "__main__"` block and duplicated route definitions.
+- **Implemented new Dashboard `/send_data` feature:**
+  - Added a new Flask route `/send_data` in `dashboard/dashboard_app.py` to render a dedicated page for sending text to ChatGPT.
+  - Created `dashboard/templates/send_data.html` and `dashboard/static/js/send_data_script.js` to provide a user interface and client-side logic for this feature, utilizing the existing `/api/direct_send_to_extension` endpoint.
+- **Fixed Dashboard navigation:**
+  - Added a "Send Data" link to the main dashboard navigation in `dashboard/templates/index.html`.

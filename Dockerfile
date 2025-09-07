@@ -12,6 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
 
 # Set PYTHONPATH to include the nested directory for imports
-ENV PYTHONPATH=/app/munjero_rag_system:$PYTHONPATH
+ENV PYTHONPATH=/app/src:$PYTHONPATH
 
 # The commands will be overridden by docker-compose
