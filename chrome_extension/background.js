@@ -4,8 +4,13 @@
 
 console.log("Ext_BG: Munjero Agent Bridge: background.js loaded.");
 
-const WEBSOCKET_SERVER_URL = "ws://127.0.0.1:8080/ws"; // Connect to the Nginx proxied WebSocket server
+const WEBSOCKET_SERVER_URL = "ws://127.0.0.1:8765/ws"; // Connect to the Nginx proxied WebSocket server
 let websocket;
+
+// Map to track if content script is ready for a given tabId
+const contentScriptReady = new Map(); // tabId -> boolean
+// Map to queue messages for content scripts that are not yet ready
+const messageQueue = new Map(); // tabId -> [messages]
 
 function connectWebSocket() {
     console.log("Ext_BG: Attempting to connect WebSocket to: " + WEBSOCKET_SERVER_URL);
@@ -23,22 +28,34 @@ function connectWebSocket() {
         console.log("Ext_BG: WebSocket message received:", event.data);
         const data = JSON.parse(event.data);
 
-        if (data.type === "AGENT_COMMAND") {
-            console.log("Ext_BG: Received AGENT_COMMAND:", data.command);
-            if (data.command === "send_message_to_chatgpt") {
-                const prompt = data.args.prompt;
-                console.log("Ext_BG: Sending SEND_TO_CHATGPT to content script.");
-                // Send message to content script (which is injected into ChatGPT page)
-                chrome.tabs.query({ url: "https://chat.openai.com/*" }, (tabs) => {
-                    if (tabs.length > 0) {
-                        chrome.tabs.sendMessage(tabs[0].id, { type: "SEND_TO_CHATGPT", payload: prompt });
-                        console.log("Ext_BG: Message sent to ChatGPT tab.");
+        if (data.type === "SEND_TO_CHATGPT") {
+            console.log("Ext_BG: Received SEND_TO_CHATGPT message from WebSocket.");
+            const prompt = data.payload;
+            console.log("Ext_BG: Attempting to send SEND_TO_CHATGPT to content script.");
+            // Send message to content script (which is injected into ChatGPT page)
+            chrome.tabs.query({}, (tabs) => {
+                console.log("Ext_BG: chrome.tabs.query result:", tabs);
+                const chatgptTab = tabs.find(tab => tab.url && (tab.url.includes("chatgpt.com") || tab.url.includes("chat.openai.com")));
+
+                if (chatgptTab) {
+                    console.log("Ext_BG: Found ChatGPT tab. Tab ID:", chatgptTab.id, "URL:", chatgptTab.url);
+                    const tabId = chatgptTab.id;
+
+                    if (contentScriptReady.get(tabId)) {
+                        console.log(`Ext_BG: Content script for tab ${tabId} is ready. Sending message immediately.`);
+                        sendMessageToContentScript(tabId, { type: "SEND_TO_CHATGPT", payload: prompt });
                     } else {
-                        console.warn("Ext_BG: ChatGPT tab not found.");
-                        // Optionally, send an error back to the Agent AI
+                        console.log(`Ext_BG: Content script for tab ${tabId} not ready. Queuing message.`);
+                        if (!messageQueue.has(tabId)) {
+                            messageQueue.set(tabId, []);
+                        }
+                        messageQueue.get(tabId).push({ type: "SEND_TO_CHATGPT", payload: prompt });
                     }
-                });
-            }
+                } else {
+                    console.warn("Ext_BG: ChatGPT tab not found.");
+                    // Optionally, send an error back to the Agent AI
+                }
+            });
         }
     };
 
@@ -54,6 +71,22 @@ function connectWebSocket() {
         websocket.close();
         console.log("Ext_BG: WebSocket closed due to error.");
     };
+}
+
+// Function to send messages to content script
+function sendMessageToContentScript(tabId, message) {
+    try {
+        chrome.tabs.sendMessage(tabId, message, (res) => {
+            if (chrome.runtime.lastError) {
+                console.error("Ext_BG: sendMessage failed:", chrome.runtime.lastError.message);
+            } else {
+                console.log("Ext_BG: sendMessage response:", res);
+            }
+        });
+        console.log(`Ext_BG: Message sent to content script for tab ${tabId}.`);
+    } catch (e) {
+        console.error("Ext_BG: Error sending message to content script:", e);
+    }
 }
 
 // Connect WebSocket when the background script starts
@@ -91,7 +124,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         sendResponse({ status: "Error", error: chrome.runtime.lastError.message });
                     } else {
                         const { dom, url } = results[0].result;
-                        fetch('http://localhost:5001/api/receive-dom-from-extension', {
+                        fetch('http://localhost:5000/api/receive-dom-from-extension', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ dom, url })
@@ -113,5 +146,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         });
         return true; // Indicate that sendResponse will be called asynchronously
+    } else if (message.type === "CONTENT_READY") {
+        console.log(`Ext_BG: Received CONTENT_READY from tab ${sender.tab.id}.`);
+        contentScriptReady.set(sender.tab.id, true);
+        // Send any queued messages for this tab
+        if (messageQueue.has(sender.tab.id)) {
+            const queuedMessages = messageQueue.get(sender.tab.id);
+            console.log(`Ext_BG: Sending ${queuedMessages.length} queued messages for tab ${sender.tab.id}.`);
+            queuedMessages.forEach(msg => sendMessageToContentScript(sender.tab.id, msg));
+            messageQueue.delete(sender.tab.id);
+        }
     }
 });

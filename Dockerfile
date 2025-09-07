@@ -1,13 +1,17 @@
-
-# Use an official Python runtime as a parent image
+# Use a Python base image
 FROM python:3.9-slim-buster
 
-# Set the working directory
-WORKDIR /app/munjero_rag_system
+# Set the working directory in the container
+WORKDIR /app
 
-# Copy and install requirements
-COPY munjero_rag_system/requirements.txt .
+# Copy requirements.txt from the nested directory and install dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# The application code will be mounted via docker-compose volumes
-# No COPY command is needed here for the source code
+# Copy the entire munjero_rag_system directory into the container
+COPY . /app
+
+# Set PYTHONPATH to include the nested directory for imports
+ENV PYTHONPATH=/app/munjero_rag_system:$PYTHONPATH
+
+# The commands will be overridden by docker-compose

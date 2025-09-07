@@ -32,9 +32,8 @@ def direct_send_to_extension():
         return jsonify({"error": "Prompt is required"}), 400
     
     command = {
-        "type": "AGENT_COMMAND",
-        "command": "send_message_to_chatgpt",
-        "args": {"prompt": prompt}
+        "type": "SEND_TO_CHATGPT",
+        "payload": prompt
     }
     print(f"Dashboard: Pushing command to AGENT_COMMANDS_LIST: {command}", flush=True, file=sys.stderr)
     redis_client.lpush(AGENT_COMMANDS_LIST, json.dumps(command))
@@ -160,6 +159,11 @@ def get_last_received_dom():
     else:
         print("Dashboard: No DOM content found in Redis.", flush=True, file=sys.stderr)
         return jsonify({"error": "No DOM content available."}), 404
+
+@app.route('/send_data')
+def send_data_page():
+    print("Dashboard: /send_data route accessed", flush=True, file=sys.stderr)
+    return render_template('send_data.html')
 
 if __name__ == "__main__":
     print("Dashboard: Starting Flask app...", flush=True, file=sys.stderr)

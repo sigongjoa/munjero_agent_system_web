@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Data to ChatGPT</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Send Data to ChatGPT</h1>
+        <nav>
+            <a href="/">Home</a> |
+            <a href="/dom-debugger">DOM Debugger</a> |
+            <a href="/send_data">Send Data</a>
+        </nav>
+
+        <div class="panel">
+            <h2>Enter Prompt</h2>
+            <form id="send-data-form">
+                <input type="text" id="prompt-input" placeholder="Enter text to send..." required>
+                <button type="submit">Send to ChatGPT</button>
+            </form>
+            <div id="response-area"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/send_data_script.js') }}"></script>
+</body>
+</html>
