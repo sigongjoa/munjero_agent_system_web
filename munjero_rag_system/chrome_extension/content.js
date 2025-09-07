@@ -40,6 +40,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.error('Ext_CT: ChatGPT send button not found or it is disabled.');
             sendResponse({ status: "Error", error: "Send button not found" });
         }
+    } else if (message.type === "SEND_TO_CHATGPT_TEXTFIELD") { // New block for textfield input
+        console.log("Ext_CT: Content script received message to populate textfield:", message.payload);
+
+        const textarea = document.getElementById('prompt-textarea');
+
+        if (!textarea) {
+            console.error('Ext_CT: ChatGPT textarea with id "prompt-textarea" not found for textfield input.');
+            sendResponse({ status: "Error", error: "Textarea not found for textfield input" });
+            return;
+        }
+
+        textarea.value = message.payload;
+        const inputEvent = new Event('input', { bubbles: true });
+        textarea.dispatchEvent(inputEvent);
+        console.log("Ext_CT: Textfield populated and input event dispatched.");
+        sendResponse({ status: "Textfield populated successfully" });
     }
 });
 

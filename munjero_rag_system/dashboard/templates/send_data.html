@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Data to ChatGPT Textfield</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Send Data to ChatGPT Textfield</h1>
+        <p>Enter the text you want to send to the ChatGPT textfield via the Chrome Extension.</p>
+        <form id="sendForm">
+            <label for="dataToSend">Text to send:</label>
+            <textarea id="dataToSend" rows="10" cols="50" placeholder="Enter your text here..."></textarea>
+            <button type="button" onclick="sendData()">Send to ChatGPT</button>
+        </form>
+        <p id="sendStatus" style="color: blue;"></p>
+    </div>
+
+    <script>
+        async function sendData() {
+            const textarea = document.getElementById('dataToSend');
+            const textContent = textarea.value;
+            const sendStatus = document.getElementById('sendStatus');
+
+            if (!textContent) {
+                sendStatus.innerText = 'Please enter some text.';
+                sendStatus.style.color = 'red';
+                return;
+            }
+
+            sendStatus.innerText = 'Sending data...';
+            sendStatus.style.color = 'blue';
+
+            try {
+                const response = await fetch('/api/send_to_chatgpt_textfield', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text_content: textContent })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    sendStatus.innerText = result.message;
+                    sendStatus.style.color = 'green';
+                    textarea.value = ''; // Clear textarea on success
+                } else {
+                    sendStatus.innerText = `Error: ${result.error || 'Unknown error'}`;
+                    sendStatus.style.color = 'red';
+                }
+            } catch (error) {
+                sendStatus.innerText = `Network error: ${error.message}`;
+                sendStatus.style.color = 'red';
+                console.error('Error sending data:', error);
+            }
+        }
+    </script>
+</body>
+</html>

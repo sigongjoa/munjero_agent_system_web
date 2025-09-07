@@ -7,3 +7,5 @@ pdfplumber
 rq
 websockets
 openai
+beautifulsoup4
+flask-cors
