@@ -8,6 +8,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy the port checking script
+COPY scripts/check_port.py /app/scripts/check_port.py
+
 # Copy the entire munjero_rag_system directory into the container
 COPY . /app
 

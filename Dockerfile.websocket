@@ -1,9 +1,0 @@
-FROM python:3.9-slim-buster
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY scripts/websocket_server.py scripts/websocket_server.py
-COPY scripts/tools_chatgpt.py scripts/tools_chatgpt.py
-# Add other necessary scripts from 'scripts/' if websocket_server.py depends on them
-# For now, assuming only websocket_server.py and tools_chatgpt.py are directly needed
-CMD ["python", "scripts/websocket_server.py"]

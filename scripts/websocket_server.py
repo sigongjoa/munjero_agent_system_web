@@ -1,7 +1,8 @@
 import asyncio
 import websockets
 import json
-import redis
+import redis # Synchronous Redis client
+import redis.asyncio as aredis # Asynchronous Redis client
 import threading
 import sys
 import logging
@@ -40,12 +41,13 @@ async def broadcast_to_clients(message: str):
 def redis_listener_thread(loop):
     """Listens to Redis in a blocking way and schedules broadcasts on the main event loop."""
     logging.info("Redis listener thread started.")
+    # Use the synchronous redis client here
     redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
     logging.info("Redis listener connected successfully.")
 
     while True:
         try:
-            logging.debug("Waiting for command from Redis (blocking pop)...")
+            logging.debug("Waiting for command from Redis (blocking pop)....")
             _, command_json = redis_client.brpop(AGENT_COMMANDS_LIST)
             
             if command_json:
@@ -55,22 +57,38 @@ def redis_listener_thread(loop):
             logging.error(f"Redis connection error in listener thread: {e}. Retrying in 5s.")
             time.sleep(5)
         except Exception as e:
-            logging.error(f"An unexpected error occurred in redis_listener_thread: {e}", exc_info=True)
+            logging.error(f"An error occurred in redis_listener_thread: {e}", exc_info=True)
 
 async def register_client(websocket):
     """Handles individual client connections."""
     logging.info(f"Connection handler started for {websocket.remote_address}")
-    aredis_client = redis.asyncio.Redis(host='redis', port=6379, db=0, decode_responses=True)
+    # Use the asynchronous redis client here
+    aredis_client = aredis.Redis(host='redis', port=6379, db=0, decode_responses=True)
 
     try:
         connected_clients.add(websocket)
-        await aredis_client.set(EXTENSION_STATUS_KEY, 'connected', ex=15)
+        await aredis_client.set(EXTENSION_STATUS_KEY, 'connected') # Removed ex parameter
+        logging.info(f"EXTENSION_STATUS_KEY set to 'connected' for {websocket.remote_address}") # Added log
         logging.info(f"Client {websocket.remote_address} connected. Total clients: {len(connected_clients)}")
 
         async for message in websocket:
             logging.info(f"<- Received message from {websocket.remote_address}: {message}")
             try:
                 data = json.loads(message)
+
+                # If the message is the output from ChatGPT, reformat and broadcast it to all clients.
+                if data.get('type') == 'CHATGPT_OUTPUT':
+                    logging.info("Received CHATGPT_OUTPUT, re-broadcasting as SCRIPT_GENERATED.")
+                    script_message = {
+                        "type": "SCRIPT_GENERATED",
+                        "payload": {
+                            "script": data.get('payload')
+                        }
+                    }
+                    # We are in the main asyncio loop, so we can await the broadcast directly.
+                    await broadcast_to_clients(json.dumps(script_message))
+
+                # Continue with the original logic of pushing all responses to Redis.
                 await aredis_client.lpush(EXTENSION_RESPONSES_LIST, json.dumps(data))
             except json.JSONDecodeError:
                 logging.warning(f"Received non-JSON message: {message}")
@@ -80,22 +98,26 @@ async def register_client(websocket):
     finally:
         connected_clients.remove(websocket)
         if not connected_clients:
-            await aredis_client.delete(EXTENSION_STATUS_KEY)
-            logging.info("Last client disconnected. Cleared extension status from Redis.")
+            await aredis_client.set(EXTENSION_STATUS_KEY, 'disconnected')
+            logging.info("Last client disconnected. Set extension status to 'disconnected' in Redis.")
         logging.info(f"Client {websocket.remote_address} disconnected. Total clients: {len(connected_clients)}")
     await aredis_client.aclose()
 
+
+# --- Main Application Setup ---
 async def main():
     global main_event_loop
     main_event_loop = asyncio.get_running_loop()
 
+    # Start the blocking Redis listener in a separate thread
     listener_thread = threading.Thread(
         target=redis_listener_thread, 
         args=(main_event_loop,), 
-        daemon=True
+        daemon=True  # Allows main program to exit even if this thread is running
     )
     listener_thread.start()
 
+    # Start the WebSocket server
     async with websockets.serve(register_client, "0.0.0.0", 8765):
         logging.info("WebSocket server started and listening on 0.0.0.0:8765")
         await asyncio.Future()  # Run forever

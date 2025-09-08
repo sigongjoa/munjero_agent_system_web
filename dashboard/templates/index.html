@@ -39,8 +39,10 @@
             <h2>Shorts Script & Image Generation</h2>
             <div class="script-generation-section">
                 <h3>Generate Shorts Script</h3>
-                <input type="text" id="script-topic" placeholder="Enter topic for shorts script..." required>
-                <button id="generate-script-btn">Generate Script</button>
+                <form id="generate-script-form">
+                    <input type="text" id="script-topic" placeholder="Enter topic for shorts script..." required>
+                    <button type="submit" id="generate-script-btn">Generate Script</button>
+                </form>
                 <textarea id="script-output" readonly placeholder="Generated script will appear here..."></textarea>
                 <button id="generate-images-btn" style="display: none;">Generate Images for Script</button>
             </div>

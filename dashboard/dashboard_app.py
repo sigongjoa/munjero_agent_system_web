@@ -125,6 +125,20 @@ def get_extension_status():
     else:
         return jsonify({"status": "disconnected", "message": "Chrome Extension is not connected."})
 
+@app.route('/api/update_extension_status', methods=['POST'])
+def update_extension_status():
+    """Receives extension connection status updates and stores them in Redis."""
+    data = request.get_json()
+    status = data.get('status')
+    if not status:
+        return jsonify({"error": "Status is required"}), 400
+    
+    if status in ['connected', 'disconnected']:
+        redis_client.set(EXTENSION_STATUS_KEY, status)
+        print(f"Dashboard: Received extension status update: {status}", flush=True, file=sys.stderr)
+        return jsonify({"message": f"Extension status set to {status}"}), 200
+    else:
+        return jsonify({"error": "Invalid status provided"}), 400
 
 @app.route('/api/receive-dom-from-extension', methods=['POST'])
 def receive_dom_from_extension():
@@ -145,6 +159,12 @@ def get_last_received_dom():
         return jsonify(json.loads(stored_data)), 200
     else:
         return jsonify({"error": "No DOM content available."}), 404
+
+@app.route('/api/worker_status', methods=['GET'])
+def get_worker_status():
+    """Checks the status of the agent worker."""
+    status = redis_client.get('worker_status')
+    return jsonify({"status": status or "not_ready"}), 200
 
 
 if __name__ == "__main__":

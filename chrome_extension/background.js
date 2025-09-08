@@ -1,12 +1,12 @@
 // background.js
 console.log("Ext_BG(1): Munjero Agent Bridge: background.js loaded.");
 
-const WEBSOCKET_SERVER_URL = "ws://127.0.0.1:8765";
+const WEBSOCKET_SERVER_URL = "ws://127.0.0.1:8766";
 let websocket;
 
 // --- State Management ---
-const readyTabIds = new Set();
-const messageQueue = new Map();
+// Map to store active ports for each tabId
+const contentScriptPorts = new Map(); // tabId -> Port
 
 function connectWebSocket() {
     console.log("Ext_BG(2): Attempting to connect WebSocket to: " + WEBSOCKET_SERVER_URL);
@@ -15,6 +15,12 @@ function connectWebSocket() {
     websocket.onopen = () => {
         console.log("Ext_BG(3): WebSocket connected successfully!");
         websocket.send(JSON.stringify({ type: "EXTENSION_READY", message: "Chrome Extension is ready." }));
+        // Update server with connected status
+        fetch("http://localhost:5000/api/update_extension_status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "connected" })
+        }).catch(err => console.error("Failed to update extension status (connected):", err));
     };
 
     websocket.onmessage = (event) => {
@@ -29,84 +35,98 @@ function connectWebSocket() {
 
     websocket.onclose = (event) => {
         console.log(`Ext_BG(E1): WebSocket disconnected: Code ${event.code}`);
+        // Update server with disconnected status
+        fetch("http://localhost:5000/api/update_extension_status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "disconnected" })
+        }).catch(err => console.error("Failed to update extension status (disconnected):", err));
         setTimeout(connectWebSocket, 5000);
     };
 
     websocket.onerror = (error) => {
         console.error("Ext_BG(E2): WebSocket error:", error);
+        // Update server with disconnected status on error
+        fetch("http://localhost:5000/api/update_extension_status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "disconnected" })
+        }).catch(err => console.error("Failed to update extension status (error):", err));
         websocket.close();
     };
 }
 
-function handleSendToChatGPT(payload) {
+function isChatGPTTab(url) {
+    return url.includes("chat.openai.com") || url.includes("chatgpt.com");
+}
+
+async function handleSendToChatGPT(payload) {
     console.log("Ext_BG(7): handleSendToChatGPT called.");
-    chrome.tabs.query({ url: ["*://chat.openai.com/*", "*://chatgpt.com/*"] }, (tabs) => {
-        if (tabs && tabs.length > 0) {
-            const tabId = tabs[0].id;
-            console.log(`Ext_BG(7a): Found ChatGPT tab ${tabId}.`);
+    const tabs = await chrome.tabs.query({ url: ["*://chat.openai.com/*", "*://chatgpt.com/*"] });
 
-            if (readyTabIds.has(tabId)) {
-                console.log(`Ext_BG(7b): Tab ${tabId} is in ready set. Sending message immediately.`);
-                const messageToSend = { type: "SEND_TO_CHATGPT", payload: payload };
-                console.log("Ext_BG(DEBUG): Preparing to send message with corrected payload structure:", messageToSend);
-                sendMessageToContentScript(tabId, messageToSend);
-            } else {
-                console.log(`Ext_BG(7c): Tab ${tabId} is not ready. Queuing message.`);
-                if (!messageQueue.has(tabId)) {
-                    messageQueue.set(tabId, []);
+    if (tabs && tabs.length > 0) {
+        const tabId = tabs[0].id;
+        console.log(`Ext_BG(7a): Found ChatGPT tab ${tabId}.`);
+
+        const port = contentScriptPorts.get(tabId);
+        if (port) {
+            console.log(`Ext_BG(7b): Port for tab ${tabId} is ready. Sending message immediately.`);
+            const messageToSend = { type: "SEND_TO_CHATGPT", payload: payload };
+            console.log("Ext_BG(DEBUG): Preparing to send message with corrected payload structure:", messageToSend);
+            port.postMessage(messageToSend);
+        } else {
+            console.warn(`Ext_BG(W1): Port for tab ${tabId} not found. Content script might not be ready or connected.`);
+            // In a more complex scenario, you might queue the message here.
+            // For now, we assume content script will connect soon.
+        }
+    } else {
+        console.warn("Ext_BG(W2): ChatGPT tab not found.");
+    }
+}
+
+// --- Port-based Messaging from Content Script ---
+chrome.runtime.onConnect.addListener((port) => {
+    console.log(`Ext_BG(4): Port connected from ${port.name}.`);
+    if (port.name === "content-script-port") {
+        // Store the port by tabId
+        const tabId = port.sender.tab.id;
+        if (tabId && isChatGPTTab(port.sender.tab.url)) {
+            contentScriptPorts.set(tabId, port);
+            console.log(`Ext_BG(4a): Stored port for tab ${tabId}.`);
+
+            port.onMessage.addListener((message) => {
+                console.log(`Ext_BG(5): Message received from content script on tab ${tabId}:`, message);
+                if (message.type === "CONTENT_SCRIPT_READY") {
+                    console.log(`Ext_BG(5a): CONTENT_SCRIPT_READY received from tab ${tabId}.`);
+                    // No need to add to readyTabIds set, as port itself signifies readiness
+                } else if (message.type === "CHATGPT_OUTPUT") {
+                    console.log(`Ext_BG(10): Received CHATGPT_OUTPUT from tab ${tabId}.`);
+                    if (websocket && websocket.readyState === WebSocket.OPEN) {
+                        websocket.send(JSON.stringify(message));
+                        console.log("Ext_BG(11): Sent CHATGPT_OUTPUT to server.");
+                    }
                 }
-                messageQueue.get(tabId).push({ type: "SEND_TO_CHATGPT", ...payload });
-            }
-        } else {
-            console.warn("Ext_BG(W1): ChatGPT tab not found.");
-        }
-    });
-}
+            });
 
-function sendMessageToContentScript(tabId, message) {
-    console.log(`Ext_BG(8): Sending message of type '${message.type}' to tab ${tabId}.`);
-    chrome.tabs.sendMessage(tabId, message, (response) => {
-        if (chrome.runtime.lastError) {
-            console.error("Ext_BG(E3): Error sending message:", chrome.runtime.lastError.message);
+            port.onDisconnect.addListener(() => {
+                console.log(`Ext_BG(E3): Port disconnected for tab ${tabId}.`);
+                contentScriptPorts.delete(tabId);
+            });
         } else {
-            console.log("Ext_BG(9): Response from content script:", response);
-        }
-    });
-}
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log(`Ext_BG(4): Received message: ${message.type} from sender`, sender);
-
-    if (message.type === "CONTENT_SCRIPT_READY") {
-        if (sender.tab && sender.tab.id) {
-            const tabId = sender.tab.id;
-            console.log(`Ext_BG(4a): Received CONTENT_SCRIPT_READY from tab ${tabId}. Adding to ready set.`);
-            readyTabIds.add(tabId);
-            
-            if (messageQueue.has(tabId)) {
-                const queuedMessages = messageQueue.get(tabId);
-                console.log(`Ext_BG(5): Found ${queuedMessages.length} queued message(s) for tab ${tabId}. Sending now.`);
-                queuedMessages.forEach(msg => sendMessageToContentScript(tabId, msg));
-                messageQueue.delete(tabId);
-            }
-            sendResponse({status: "Ready signal received for tab " + tabId});
-        } else {
-            console.warn("Ext_BG(W2): Received CONTENT_SCRIPT_READY from a sender without a tab object.");
-            sendResponse({status: "Ready signal received from non-tab sender"});
-        }
-    } 
-    else if (sender.tab && sender.tab.id) {
-        const tabId = sender.tab.id;
-        if (message.type === "CHATGPT_OUTPUT") {
-            console.log(`Ext_BG(10): Received CHATGPT_OUTPUT from tab ${tabId}.`);
-            if (websocket && websocket.readyState === WebSocket.OPEN) {
-                websocket.send(JSON.stringify(message));
-                console.log("Ext_BG(11): Sent CHATGPT_OUTPUT to server.");
-            }
-            sendResponse({status: "Output received"});
+            console.warn("Ext_BG(W3): Port connected from non-ChatGPT tab or without tab info.", port.sender);
         }
     }
-    return true; // Keep message port open for async response
+});
+
+// Listener for messages from popup.js
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    console.log("Ext_BG: Message received from runtime:", msg);
+    if (msg.type === "TRIGGER_DOM_CAPTURE") {
+        // For now, just acknowledge. Actual DOM capture logic would go here.
+        sendResponse({ status: "DOM capture request received by background." });
+    }
+    // Return true to indicate that sendResponse will be called asynchronously
+    return true;
 });
 
 console.log("Ext_BG(1a): Adding message listener and connecting WebSocket.");

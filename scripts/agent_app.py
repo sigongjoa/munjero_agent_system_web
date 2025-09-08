@@ -19,6 +19,7 @@ logging.basicConfig(
 
 # Redis Key for the task list
 AGENT_TASKS_LIST = 'agent_tasks'
+WORKER_STATUS_KEY = 'worker_status'
 
 async def main():
     """
@@ -31,6 +32,8 @@ async def main():
         redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
         await redis_client.ping() # Check connection
         logging.info("Agent connected to Redis.")
+        await redis_client.set(WORKER_STATUS_KEY, 'ready')
+        logging.info("Agent status set to 'ready' in Redis.")
     except redis.exceptions.ConnectionError as e:
         logging.error(f"Agent could not connect to Redis: {e}. Exiting.")
         sys.exit(1)
@@ -49,12 +52,14 @@ async def main():
 
             if task_type == "generate_script":
                 topic = task_data.get("topic")
+                # The task_id from the dashboard IS the script_id we need to use.
+                script_id = task_id 
                 if topic:
-                    # Directly await the async function
-                    result_id = await generate_shorts_script(topic)
-                    logging.info(f"Task {task_id} (generate_script) completed. Result ID: {result_id}")
+                    # Pass the script_id to the function.
+                    result = await generate_shorts_script(topic, script_id)
+                    logging.info(f"Task {script_id} (generate_script) completed. Result: {result}")
                 else:
-                    logging.error(f"Task {task_id} is missing 'topic'.")
+                    logging.error(f"Task {script_id} is missing 'topic'.")
 
             elif task_type == "generate_images":
                 script_id = task_data.get("script_id")

@@ -3,7 +3,7 @@ services:
   redis:
     image: 'redis:7-alpine'
     ports:
-      - '6379:6379'
+      - '6380:6379'
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
@@ -11,13 +11,15 @@ services:
   websocket_server:
     build:
       context: .
-      dockerfile: Dockerfile.websocket
+      dockerfile: Dockerfile
     ports:
-      - '8765:8765'
+      - '8766:8765'
     depends_on:
       - redis
     environment:
       - REDIS_HOST=redis
+      - WS_PORT=8765
+    command: bash -c "python /app/scripts/check_port.py 8765 WS_PORT 8765 && python /app/scripts/websocket_server.py"
     volumes:
       - ./scripts:/app/scripts
       - ./requirements.txt:/app/requirements.txt
@@ -25,13 +27,15 @@ services:
   dashboard:
     build:
       context: .
-      dockerfile: Dockerfile.dashboard
+      dockerfile: Dockerfile
     ports:
       - '5000:5000'
     depends_on:
       - redis
     environment:
       - REDIS_HOST=redis
+      - DASHBOARD_PORT=5000
+    command: bash -c "python /app/scripts/check_port.py 5000 DASHBOARD_PORT 5000 && python /app/dashboard/dashboard_app.py"
     volumes:
       - ./dashboard:/app/dashboard
       - ./scripts:/app/scripts
@@ -40,7 +44,7 @@ services:
   agent:
     build:
       context: .
-      dockerfile: Dockerfile.agent
+      dockerfile: Dockerfile
     depends_on:
       - redis
     environment:
