@@ -1,41 +1,74 @@
 // content.js
-console.log("Ext_CT: Munjero Agent Bridge: content.js loaded on", window.location.href);
+console.log("Ext_CT(1): Munjero Agent Bridge: content.js loaded on", window.location.href);
 
-// Helper function to simulate typing
+// This is a more robust way to simulate user input
 function simulateTyping(editableDiv, text) {
-    console.log("Ext_CT: Simulating typing using execCommand.");
+    console.log("Ext_CT(5): Simulating typing using execCommand.");
     editableDiv.focus();
     document.execCommand("insertText", false, text);
-    console.log("Ext_CT: execCommand insertText complete.");
 }
 
-// Helper function to simulate click
-function simulateClick(button) {
-    console.log("Ext_CT: Simulating click on button.");
-    const rect = button.getBoundingClientRect();
-
-    ["mousedown", "mouseup", "click"].forEach(type => {
-        const evt = new MouseEvent(type, {
-            bubbles: true,
-            clientX: rect.left + rect.width / 2,
-            clientY: rect.top + rect.height / 2
-        });
-        button.dispatchEvent(evt);
-    });
-    console.log("Ext_CT: Click simulation complete.");
+function findSendButton() {
+    // This selector seems to be the most stable for the send button.
+    return document.querySelector('button[data-testid="send-button"]');
 }
 
-// Function to observe the send button
-function observeSendButton(callback) {
-    console.log("Ext_CT: Observing for send button.");
-    const observer = new MutationObserver(() => {
-        const sendButton = document.querySelector('button[data-testid="send-button"]')
-            || document.getElementById("composer-submit-button");
+function findTextarea() {
+    return document.getElementById('prompt-textarea');
+}
 
-        if (sendButton && !sendButton.disabled) {
-            console.log("Ext_CT: ✅ Send button appeared and is enabled:", sendButton);
-            observer.disconnect(); // Stop observing
-            callback(sendButton);
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log("Ext_CT(DEBUG): Received full message object:", message);
+    console.log(`Ext_CT(4): Received message of type '${message.type}' from background script.`);
+
+    if (message.type === "SEND_TO_CHATGPT") {
+        const textarea = findTextarea();
+        if (!textarea) {
+            console.error('Ext_CT(E1): ChatGPT textarea not found.');
+            sendResponse({ status: "Error", error: "Textarea not found" });
+            return;
+        }
+
+        console.log("Ext_CT(4a): Textarea found. Simulating typing.");
+        // Use the more robust typing simulation instead of setting value directly
+        simulateTyping(textarea, message.payload.prompt);
+
+        // Increased timeout for more stability, allowing UI to update after simulated typing
+        setTimeout(() => {
+            const sendButton = findSendButton();
+            if (sendButton && !sendButton.disabled) {
+                console.log("Ext_CT(4b): Send button found and enabled. Clicking.", sendButton);
+                sendButton.click();
+                sendResponse({ status: "Message sent" });
+                // Correctly pass the request_id from the payload
+                observeChatGPTResponse(message.payload.request_id);
+            } else {
+                console.error('Ext_CT(E2): Send button not found or is disabled.', sendButton);
+                sendResponse({ status: "Error", error: "Send button not found or disabled" });
+            }
+        }, 500);
+    }
+    return true; // Indicate async response
+});
+
+function observeChatGPTResponse(requestId) {
+    console.log(`Ext_CT(6): Observing for ChatGPT response for request_id: ${requestId}`);
+    const observer = new MutationObserver((mutations, obs) => {
+        const responseElements = document.querySelectorAll('.markdown.prose');
+        if (responseElements.length > 0) {
+            const lastResponseElement = responseElements[responseElements.length - 1];
+            // Heuristic to check for completion: the streaming text indicator is gone
+            const streamingIndicator = lastResponseElement.querySelector('.result-streaming');
+            if (!streamingIndicator) {
+                const responseText = lastResponseElement.innerText;
+                console.log("Ext_CT(7): Response complete. Sending to background.");
+                chrome.runtime.sendMessage({
+                    type: "CHATGPT_OUTPUT",
+                    payload: responseText,
+                    request_id: requestId
+                });
+                obs.disconnect();
+            }
         }
     });
 
@@ -43,43 +76,12 @@ function observeSendButton(callback) {
         childList: true,
         subtree: true,
     });
-    console.log("Ext_CT: MutationObserver attached to document.body.");
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log("Ext_CT: Received message from background script:", message.type);
-    if (message.type === "SEND_TO_CHATGPT") {
-        console.log("Ext_CT: Content script received message to send to ChatGPT:", message.payload);
-        
-        // Find the textarea for input
-        console.log("Ext_CT: Attempting to find textarea with id 'prompt-textarea'.");
-        const textarea = document.getElementById('prompt-textarea');
-        
-        if (!textarea) {
-            console.error('Ext_CT: ChatGPT textarea with id "prompt-textarea" not found.');
-            sendResponse({ status: "Error", error: "Textarea not found" });
-            return; // Stop execution if textarea is not found
-        }
-        console.log("Ext_CT: Textarea found:", textarea);
+function announceReady() {
+    console.log("Ext_CT(2): Announcing readiness to background script.");
+    chrome.runtime.sendMessage({ type: "CONTENT_SCRIPT_READY" });
+}
 
-        // Simulate typing
-        simulateTyping(textarea, message.payload);
-
-        // Observe for the send button to appear and then click it
-        observeSendButton((btn) => {
-            console.log("Ext_CT: Simulating click on send button after observation.");
-            simulateClick(btn);
-            sendResponse({ status: "Message sent successfully" });
-            console.log("Ext_CT: Send button clicked after observation.");
-        });
-    }
-});
-
-// Send CONTENT_READY message to background script after listener is set up
-console.log("Ext_CT: Sending CONTENT_READY to background.");
-chrome.runtime.sendMessage({ type: "CONTENT_READY", url: window.location.href });
-
-// Example: Send a message to the background script when the page loads
-// This can be useful for letting the agent know the content script is ready.
-console.log("Ext_CT: Sending CHATGPT_OUTPUT (content script loaded) to background.");
-chrome.runtime.sendMessage({ type: "CHATGPT_OUTPUT", payload: "Content script loaded and ready." });
+console.log("Ext_CT(1a): Adding message listener and announcing readiness.");
+announceReady();

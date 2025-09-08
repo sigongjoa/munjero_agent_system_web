@@ -1,7 +1,8 @@
+
 sentence-transformers
 faiss-cpu
 langchain
-Flask
+Flask[async]
 PyPDF2
 pdfplumber
 rq
@@ -9,3 +10,4 @@ websockets
 openai
 beautifulsoup4
 flask-cors
+

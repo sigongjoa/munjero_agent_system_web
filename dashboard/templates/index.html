@@ -34,6 +34,21 @@
             <h2>Response from ChatGPT</h2>
             <div id="response-area">Waiting for response...</div>
         </div>
+
+        <div class="panel">
+            <h2>Shorts Script & Image Generation</h2>
+            <div class="script-generation-section">
+                <h3>Generate Shorts Script</h3>
+                <input type="text" id="script-topic" placeholder="Enter topic for shorts script..." required>
+                <button id="generate-script-btn">Generate Script</button>
+                <textarea id="script-output" readonly placeholder="Generated script will appear here..."></textarea>
+                <button id="generate-images-btn" style="display: none;">Generate Images for Script</button>
+            </div>
+            <div class="image-gallery-section">
+                <h3>Generated Images</h3>
+                <div id="image-gallery"></div>
+            </div>
+        </div>
     </div>
 
     <script src="/static/js/dashboard.js"></script>

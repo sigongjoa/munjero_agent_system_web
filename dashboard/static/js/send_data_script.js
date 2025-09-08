@@ -8,7 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const prompt = promptInput.value;
         if (!prompt) return;
 
-        responseArea.textContent = 'Sending data...';
+        console.log(`SEND_DATA_SCRIPT: Sending prompt: '${prompt}'`);
+        responseArea.textContent = 'Sending data to backend...';
 
         try {
             const sendResponse = await fetch('/api/direct_send_to_extension', {
@@ -17,16 +18,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ prompt: prompt }),
             });
 
+            const responseData = await sendResponse.json();
+            console.log("SEND_DATA_SCRIPT: Received response from backend:", responseData);
+
             if (!sendResponse.ok) {
-                throw new Error(`HTTP error! status: ${sendResponse.status}`);
+                throw new Error(responseData.error || `HTTP error! status: ${sendResponse.status}`);
             }
 
-            const responseData = await sendResponse.json();
             responseArea.textContent = `Success: ${JSON.stringify(responseData)}`;
             promptInput.value = ''; // Clear input
 
         } catch (error) {
-            console.error('Error sending data:', error);
+            console.error('SEND_DATA_SCRIPT: Error sending data:', error);
             responseArea.textContent = `Error: ${error.message}`;
         }
     });

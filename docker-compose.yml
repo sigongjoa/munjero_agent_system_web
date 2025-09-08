@@ -1,67 +1,53 @@
 version: '3.8'
-
 services:
   redis:
-    image: "redis:alpine"
+    image: 'redis:7-alpine'
     ports:
-      - "6379:6379"
-    networks:
-      - munjero_network
+      - '6379:6379'
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
 
   websocket_server:
     build:
       context: .
-      dockerfile: Dockerfile
-    command: python scripts/websocket_server.py
+      dockerfile: Dockerfile.websocket
     ports:
-      - "8765:8765"
+      - '8765:8765'
     depends_on:
       - redis
-    networks:
-      - munjero_network
+    environment:
+      - REDIS_HOST=redis
     volumes:
-      - .:/app # Mount for live changes during development
+      - ./scripts:/app/scripts
+      - ./requirements.txt:/app/requirements.txt
 
-  agent_app:
+  dashboard:
     build:
       context: .
-      dockerfile: Dockerfile
-    command: python scripts/agent_app.py
+      dockerfile: Dockerfile.dashboard
+    ports:
+      - '5000:5000'
     depends_on:
       - redis
-    networks:
-      - munjero_network
+    environment:
+      - REDIS_HOST=redis
     volumes:
-      - .:/app # Mount for live changes during development
+      - ./dashboard:/app/dashboard
+      - ./scripts:/app/scripts
+      - ./requirements.txt:/app/requirements.txt
 
-  dashboard_app:
+  agent:
     build:
       context: .
-      dockerfile: Dockerfile
-    command: python dashboard/dashboard_app.py
-    ports:
-      - "5000:5000"
+      dockerfile: Dockerfile.agent
     depends_on:
       - redis
-    networks:
-      - munjero_network
+    environment:
+      - REDIS_HOST=redis
     volumes:
-      - .:/app # Mount for live changes during development
+      - ./scripts:/app/scripts
+      - ./requirements.txt:/app/requirements.txt
 
-  main_flask_app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: python src/app.py
-    ports:
-      - "5001:5001"
-    depends_on:
-      - redis
-    networks:
-      - munjero_network
-    volumes:
-      - .:/app # Mount for live changes during development
-
-networks:
-  munjero_network:
-    driver: bridge
+volumes:
+  redis_data:
