@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}DOM Viewer{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>DOM Viewer</h1>
+
+    <div class="panel">
+        <h2>Puppeteer Control</h2>
+        <div class="puppeteer-control-section">
+            <h3>Manual Login Setup</h3>
+            <button id="launch-login-btn-viewer">Launch Window & Login</button>
+            <p id="login-status-message-viewer"></p>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Crawl DOM</h2>
+        <div class="input-group">
+            <input type="text" id="crawl-url-input" placeholder="Enter URL to crawl (e.g., https://chat.openai.com)" style="width: 70%; padding: 8px; margin-right: 10px;">
+            <button id="start-crawl-btn">Start Crawl</button>
+        </div>
+        <p id="crawl-status-message"></p>
+    </div>
+
+    <div class="panel" style="margin-top: 20px;">
+        <h2>Extracted DOM Elements</h2>
+        <button id="download-csv-btn" style="margin-bottom: 10px; display: none;">Download as CSV</button>
+        <div class="table-container" style="max-height: 600px; overflow-y: auto;">
+            <table id="dom-elements-table" class="data-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Tag</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">ID</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Classes</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Selector</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Text (Preview)</th>
+                        <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Attributes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- DOM elements will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+        <p id="dom-data-message" style="text-align: center; margin-top: 10px;">No data to display. Start a crawl above.</p>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const launchLoginBtnViewer = document.getElementById('launch-login-btn-viewer');
+        const loginStatusMessageViewer = document.getElementById('login-status-message-viewer');
+
+        if (launchLoginBtnViewer) {
+            launchLoginBtnViewer.addEventListener('click', async () => {
+                loginStatusMessageViewer.textContent = 'Launching browser for manual login...';
+                try {
+                    const response = await fetch('/api/manual_login_setup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({}),
+                    });
+                    const data = await response.json();
+                    if (response.ok) {
+                        loginStatusMessageViewer.textContent = `Browser launched. Please log in manually. Task ID: ${data.task_id}`;
+                    } else {
+                        loginStatusMessageViewer.textContent = `Error: ${data.error || 'Unknown error'}`;
+                    }
+                } catch (error) {
+                    console.error('Error launching login setup:', error);
+                    loginStatusMessageViewer.textContent = `Network error: ${error.message}`;
+                }
+            });
+        }
+
+        const crawlUrlInput = document.getElementById('crawl-url-input');
+        const startCrawlBtn = document.getElementById('start-crawl-btn');
+        const crawlStatusMessage = document.getElementById('crawl-status-message');
+        const domElementsTableBody = document.querySelector('#dom-elements-table tbody');
+        const domDataMessage = document.getElementById('dom-data-message');
+        const downloadCsvBtn = document.getElementById('download-csv-btn'); // Get reference to the new button
+
+        let currentTaskId = null; // To store the task ID for CSV download
+
+        startCrawlBtn.addEventListener('click', async () => {
+            const url = crawlUrlInput.value.trim();
+            if (!url) {
+                alert('Please enter a URL.');
+                return;
+            }
+
+            crawlStatusMessage.textContent = 'Starting DOM crawl...';
+            domElementsTableBody.innerHTML = ''; // Clear previous data
+            domDataMessage.textContent = 'Crawling...';
+            downloadCsvBtn.style.display = 'none'; // Hide download button initially
+
+            try {
+                const response = await fetch('/api/crawl_dom', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: url }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    currentTaskId = data.task_id; // Store task ID
+                    crawlStatusMessage.textContent = `Crawl task queued. Task ID: ${currentTaskId}. Polling for results...`;
+                    pollDomCrawlStatus(currentTaskId);
+                } else {
+                    crawlStatusMessage.textContent = `Error: ${data.error || 'Unknown error'}`;
+                    domDataMessage.textContent = 'Failed to start crawl.';
+                }
+            } catch (error) {
+                console.error('Error starting DOM crawl:', error);
+                crawlStatusMessage.textContent = `Network error: ${error.message}`;
+                domDataMessage.textContent = 'Failed to start crawl.';
+            }
+        });
+
+        async function pollDomCrawlStatus(taskId) {
+            const pollInterval = 2000; // Poll every 2 seconds
+            let attempts = 0;
+            const maxAttempts = 60; // Max 2 minutes of polling
+
+            const checkStatus = async () => {
+                attempts++;
+                if (attempts > maxAttempts) {
+                    crawlStatusMessage.textContent = 'Polling timed out. Data might be too large or an error occurred.';
+                    domDataMessage.textContent = 'Polling timed out.';
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/api/dom_crawl_result/${taskId}`);
+                    const data = await response.json();
+
+                    if (response.status === 200 && data.status === 'completed') {
+                        crawlStatusMessage.textContent = 'DOM crawl completed successfully!';
+                        displayDomElements(data.result);
+                        domDataMessage.textContent = `Displayed ${data.result.length} elements.`
+                        if (data.result.length > 0) {
+                            downloadCsvBtn.style.display = 'block'; // Show download button if elements are extracted
+                        }
+                    } else if (response.status === 202 && data.status === 'processing') {
+                        crawlStatusMessage.textContent = `Crawl in progress... Attempt ${attempts}/${maxAttempts}`;
+                        setTimeout(checkStatus, pollInterval);
+                    } else {
+                        // Handle error case from worker.js (detailed error object)
+                        crawlStatusMessage.textContent = `Error during crawl: ${data.message || 'Unknown error'}`;
+                        domDataMessage.textContent = 'Error during crawl.';
+                        if (data.result && data.result.error) {
+                            console.error("Crawl Error Details:", data.result.error);
+                            domDataMessage.innerHTML = `
+                                ❌ Error during crawl:<br>
+                                <b>${data.result.error.name || "Error"}</b>: ${data.result.error.message}<br>
+                                <pre style="white-space: pre-wrap; word-break: break-all;">${data.result.error.stack || "No stack"}</pre>
+                                <small>URL: ${data.result.error.url || "N/A"}, Time: ${data.result.error.timestamp || "N/A"}</small>
+                            `;
+                        }
+                    }
+                } catch (error) {
+                    console.error(`Network error while polling DOM crawl status for ${taskId}:`, error);
+                    crawlStatusMessage.textContent = `Network error during polling: ${error.message}`;
+                    domDataMessage.textContent = 'Network error.';
+                }
+            };
+
+            setTimeout(checkStatus, pollInterval); // Initial call after a short delay
+        }
+
+        function displayDomElements(elements) {
+            domElementsTableBody.innerHTML = ''; // Clear existing rows
+            
+            // Error handling for elements format (from worker.js detailed error)
+            if (!Array.isArray(elements)) {
+                console.error("Invalid elements format:", elements);
+                domDataMessage.innerHTML = `<tr><td colspan="6">❌ Error: ${elements.error ? elements.error.message : "Invalid data format"}</td></tr>`;
+                return;
+            }
+
+            if (elements.length === 0) {
+                domDataMessage.textContent = 'No elements extracted.';
+                return;
+            }
+
+            elements.forEach(el => {
+                const row = domElementsTableBody.insertRow();
+                row.insertCell().textContent = el.tag;
+                row.insertCell().textContent = el.id || '';
+                row.insertCell().textContent = el.classes ? el.classes.join(' ') : '';
+                row.insertCell().textContent = el.selector;
+                row.insertCell().textContent = el.text || '';
+                row.insertCell().textContent = el.attributes ? el.attributes.map(attr => `${attr.name}=\"${attr.value}\"`).join(', ') : '';
+            });
+        }
+
+        // Event listener for the new download button
+        downloadCsvBtn.addEventListener('click', () => {
+            if (currentTaskId) {
+                window.location.href = `/api/download_dom_csv/${currentTaskId}`;
+            } else {
+                alert('No DOM crawl task active to download.');
+            }
+        });
+    });
+</script>
+{% endblock %}

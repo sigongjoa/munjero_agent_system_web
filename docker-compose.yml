@@ -13,7 +13,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - '8766:8765'
+      - '8765:8765'
     depends_on:
       - redis
     environment:
@@ -49,9 +49,29 @@ services:
       - redis
     environment:
       - REDIS_HOST=redis
+    command: bash -c "python /app/scripts/check_port.py 5000 AGENT_PORT 5000 && python /app/scripts/agent_app.py"
     volumes:
       - ./scripts:/app/scripts
       - ./requirements.txt:/app/requirements.txt
+
+  puppeteer-worker:
+    build:
+      context: ./puppeteer_worker
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - SESSION_COOKIE=${SESSION_COOKIE}
+      - DISPLAY=${DISPLAY}
+    # It's recommended to give Puppeteer a larger shared memory size
+    shm_size: '8gb'
+    mem_limit: 6g
+    volumes:
+      - ./puppeteer_worker:/app
+      - /app/node_modules
+      - /mnt/wslg/.X11-unix:/tmp/.X11-unix
+    tty: true
+    user: root
 
 volumes:
   redis_data:

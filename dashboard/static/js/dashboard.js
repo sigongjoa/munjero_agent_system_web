@@ -1,182 +1,152 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const generateScriptForm = document.getElementById('generate-script-btn');
-    const scriptTopicInput = document.getElementById('script-topic');
-    const scriptResultArea = document.getElementById('script-output');
-    const generateImagesButton = document.getElementById('generate-images-btn');
-    const imageResultArea = document.getElementById('image-gallery');
+    const checkHealthStatusBtn = document.getElementById('check-health-status');
+    const healthStatusSpan = document.getElementById('health-status');
+    const healthcheckLogsPre = document.getElementById('healthcheck-logs');
 
-    let currentScriptId = null; // To store the script ID for image generation and polling
+    if (checkHealthStatusBtn) {
+        checkHealthStatusBtn.addEventListener('click', async () => {
+            healthStatusSpan.textContent = 'Checking...';
+            healthcheckLogsPre.textContent = ''; // Clear previous logs
 
-    // --- Worker Status Check ---
-    async function waitForWorkerReady() {
-        let ready = false;
-        while (!ready) {
             try {
-                const res = await fetch("http://localhost:5000/api/worker_status");
-                const data = await res.json();
-                if (data.status === "ready") {
-                    ready = true;
-                    console.log("DASHBOARD: Worker is ready.");
-                } else {
-                    console.log("DASHBOARD: Worker not ready yet, retrying in 2 seconds...");
-                    await new Promise(r => setTimeout(r, 2000));
-                }
-            } catch (error) {
-                console.error("DASHBOARD: Error checking worker status:", error);
-                console.log("DASHBOARD: Retrying worker status check in 5 seconds...");
-                await new Promise(r => setTimeout(r, 5000));
-            }
-        }
-    }
-
-    // --- WebSocket Status Display ---
-    const extensionStatusDiv = document.getElementById('extension-status');
-    async function updateExtensionStatus() {
-        try {
-            const response = await fetch('/api/extension_status');
-            const data = await response.json();
-            extensionStatusDiv.textContent = `Extension Status: ${data.status} - ${data.message}`;
-            extensionStatusDiv.className = data.status === 'connected' ? 'status-connected' : 'status-disconnected';
-        } catch (error) {
-            extensionStatusDiv.textContent = `Extension Status: Error - ${error.message}`;
-            extensionStatusDiv.className = 'status-error';
-        }
-    }
-    setInterval(updateExtensionStatus, 5000); // Update every 5 seconds
-    updateExtensionStatus(); // Initial update
-
-    // --- Generate Script ---
-    generateScriptForm.addEventListener('click', async (event) => {
-        event.preventDefault();
-
-        // Wait for worker to be ready
-        await waitForWorkerReady();
-
-        const topic = scriptTopicInput.value;
-        if (!topic) {
-            scriptResultArea.textContent = 'Please enter a topic.';
-            return;
-        }
-
-        scriptResultArea.textContent = 'Generating script...';
-        imageResultArea.innerHTML = ''; // Clear previous images
-        generateImagesButton.style.display = 'none'; // Hide image button
-        currentScriptId = null; // Reset script ID
-
-        console.log(`DASHBOARD: Sending generate script request for topic: ${topic}`);
-        try {
-            const response = await fetch('/api/generate-script', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ topic: topic }),
-            });
-
-            const data = await response.json();
-            console.log("DASHBOARD: Generate script response:", data);
-
-            if (response.ok) {
-                currentScriptId = data.task_id; // Store the received script ID
-                scriptResultArea.textContent = `Script generation queued. Task ID: ${currentScriptId}. Waiting for result...`;
-                console.log(`DASHBOARD: Stored currentScriptId: ${currentScriptId}`);
-                pollScriptResult(currentScriptId); // Start polling for this specific script ID
-            } else {
-                scriptResultArea.textContent = `Error: ${data.error || 'Unknown error'}`;
-            }
-        } catch (error) {
-            console.error('DASHBOARD: Error generating script:', error);
-            scriptResultArea.textContent = `Error: ${error.message}`;
-        }
-    });
-
-    // --- Poll Script Result ---
-    async function pollScriptResult(scriptId) {
-        console.log(`DASHBOARD: Starting to poll for script ID: ${scriptId}`);
-        const pollInterval = setInterval(async () => {
-            try {
-                const response = await fetch(`/api/script/${scriptId}`);
+                const response = await fetch('/api/healthcheck');
                 const data = await response.json();
-                console.log(`DASHBOARD: Polling response for ${scriptId}:`, data);
+                console.log('Received health check data:', data);
+
+                // Update overall status
+                const overallStatus = data.overall === 'healthy' ? '✅ Healthy' : '❌ Unhealthy';
+                healthStatusSpan.textContent = overallStatus;
+
+                // Display component statuses
+                let componentStatusText = 'Component Statuses:\n';
+                componentStatusText += `Redis: ${data.redis?.status === 'ok' ? '✅' : '❌'} ${data.redis?.message || ''}
+`;
+                componentStatusText += `Agent: ${data.agent?.status === 'ok' ? '✅' : '❌'} ${data.agent?.message || ''}
+`;
+                componentStatusText += `Puppeteer Worker: ${data.puppeteer_worker?.status === 'ok' ? '✅' : '❌'} ${data.puppeteer_worker?.message || ''}
+`;
+                
+                
+                // Display logs
+                if (data.logs && data.logs.length > 0) {
+                    healthcheckLogsPre.textContent = componentStatusText + '\n--- Logs ---\n' + data.logs.join('\n');
+                } else {
+                    healthcheckLogsPre.textContent = componentStatusText + '\n--- Logs ---\nNo logs available.';
+                }
+
+            } catch (error) {
+                console.error('Error fetching health status:', error);
+                healthStatusSpan.textContent = '❌ Error';
+                healthcheckLogsPre.textContent = 'Failed to fetch health status. See console for details.';
+            }
+        });
+    }
+
+    const generateImagesBtn = document.getElementById('generate-images-btn');
+    const scriptContentTextarea = document.getElementById('script-content');
+    const imageGalleryDiv = document.getElementById('image-gallery'); // Assuming this exists for displaying images
+
+    if (generateImagesBtn) {
+        generateImagesBtn.addEventListener('click', async (event) => {
+            event.preventDefault(); // Prevent default form submission
+
+            const scriptContent = scriptContentTextarea.value;
+            if (!scriptContent) {
+                alert('Please enter script content to generate images.');
+                return;
+            }
+
+            // Clear previous images/messages
+            imageGalleryDiv.innerHTML = 'Generating images...';
+
+            try {
+                const response = await fetch('/api/generate-script', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ script_content: scriptContent }),
+                });
+
+                const data = await response.json();
 
                 if (response.ok) {
-                    clearInterval(pollInterval);
-                    scriptResultArea.textContent = `Generated Script:\n${data.content}`;
-                    generateImagesButton.style.display = 'block'; // Show image button
-                } else if (response.status === 404) {
-                    // Script not ready yet, continue polling
-                    scriptResultArea.textContent = `Script generation queued. Task ID: ${scriptId}. Waiting for result... (Still polling)`;
+                    console.log('Image generation task queued:', data);
+                    const taskId = data.task_id;
+                    imageGalleryDiv.innerHTML = `<p>Task queued successfully! Task ID: ${taskId}</p><p>Starting image generation...</p>`;
+                    
+                    // Start polling for task status
+                    pollTaskStatus(taskId, imageGalleryDiv);
+
                 } else {
-                    clearInterval(pollInterval);
-                    scriptResultArea.textContent = `Error fetching script: ${data.error || 'Unknown error'}`;
+                    console.error('Error queuing image generation task:', data);
+                    imageGalleryDiv.innerHTML = `<p>Error: ${data.error || 'Unknown error'}</p>`;
                 }
             } catch (error) {
-                console.error('DASHBOARD: Error during polling:', error);
-                clearInterval(pollInterval);
-                scriptResultArea.textContent = `Error during polling: ${error.message}`;
-            }
-        }, 3000); // Poll every 3 seconds
-    }
-
-    // --- Generate Images ---
-    generateImagesButton.addEventListener('click', async () => {
-        if (!currentScriptId) {
-            imageResultArea.textContent = 'No script generated yet. Please generate a script first.';
-            return;
-        }
-
-        imageResultArea.textContent = 'Generating images...';
-        console.log(`DASHBOARD: Sending generate images request for script ID: ${currentScriptId}`);
-        try {
-            const response = await fetch('/api/generate-images', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ script_id: currentScriptId }),
+                console.error('Network error or failed to send script:', error);
+                imageGalleryDiv.innerHTML = `<p>Network error or failed to send script: ${error.message}</p>`;
             });
 
+async function pollTaskStatus(taskId, displayElement) {
+    const pollInterval = 3000; // Poll every 3 seconds
+
+    const checkStatus = async () => {
+        try {
+            const response = await fetch(`/api/task-status/${taskId}`);
             const data = await response.json();
-            console.log("DASHBOARD: Generate images response:", data);
+
+            console.log(`Polling task ${taskId} status:`, data);
 
             if (response.ok) {
-                imageResultArea.textContent = `Image generation queued. Task ID: ${currentScriptId}. Waiting for result...`;
-                pollImageResult(currentScriptId); // Start polling for images
+                switch (data.status) {
+                    case 'not_found':
+                        displayElement.innerHTML = `<p>Task ${taskId}: Not found or not started yet.</p>`;
+                        setTimeout(checkStatus, pollInterval); // Keep polling if not found yet
+                        break;
+                    case 'processing':
+                        displayElement.innerHTML = `<p>Task ${taskId}: Processing...</p>`;
+                        setTimeout(checkStatus, pollInterval);
+                        break;
+                    case 'generating_images':
+                        displayElement.innerHTML = `<p>Task ${taskId}: Generating images...</p>`;
+                        setTimeout(checkStatus, pollInterval);
+                        break;
+                    case 'completed':
+                        displayElement.innerHTML = `<p>Task ${taskId}: Completed!</p>`;
+                        if (data.result && data.result.length > 0) {
+                            let imagesHtml = '<h3>Generated Images:</h3>';
+                            data.result.forEach(imageUrl => {
+                                imagesHtml += `<img src="${imageUrl}" alt="Generated Image" style="max-width: 100%; height: auto; margin-bottom: 10px;">`;
+                            });
+                            displayElement.innerHTML += imagesHtml;
+                        } else {
+                            displayElement.innerHTML += `<p>No images returned.</p>`;
+                        }
+                        break;
+                    case 'failed':
+                        displayElement.innerHTML = `<p>Task ${taskId}: Failed!</p>`;
+                        if (data.result && data.result.error) {
+                            displayElement.innerHTML += `<p>Error: ${data.result.error}</p>`;
+                        } else {
+                            displayElement.innerHTML += `<p>An unknown error occurred during image generation.</p>`;
+                        }
+                        break;
+                    default:
+                        displayElement.innerHTML = `<p>Task ${taskId}: Unknown status (${data.status}).</p>`;
+                        setTimeout(checkStatus, pollInterval);
+                        break;
+                }
             } else {
-                imageResultArea.textContent = `Error: ${data.error || 'Unknown error'}`;
+                displayElement.innerHTML = `<p>Error fetching task status for ${taskId}: ${data.message || 'Unknown error'}</p>`;
+                // Decide whether to stop polling on error or retry
+                // For now, let's stop on error to prevent infinite loops for persistent errors
             }
         } catch (error) {
-            console.error('DASHBOARD: Error generating images:', error);
-            imageResultArea.textContent = `Error: ${error.message}`;
+            console.error(`Network error while polling task ${taskId}:`, error);
+            displayElement.innerHTML = `<p>Network error while polling task ${taskId}: ${error.message}</p>`;
+            // Stop polling on network errors
         }
-    });
+    };
 
-    // --- Poll Image Result ---
-    async function pollImageResult(scriptId) {
-        console.log(`DASHBOARD: Starting to poll for images for script ID: ${scriptId}`);
-        const pollInterval = setInterval(async () => {
-            try {
-                const response = await fetch(`/api/images/${scriptId}`);
-                const data = await response.json();
-                console.log(`DASHBOARD: Polling image response for ${scriptId}:`, data);
-
-                if (response.ok) {
-                    clearInterval(pollInterval);
-                    imageResultArea.innerHTML = 'Generated Images:<br>';
-                    data.image_urls.forEach(url => {
-                        const img = document.createElement('img');
-                        img.src = url;
-                        img.style.maxWidth = '100%';
-                        img.style.margin = '5px';
-                        imageResultArea.appendChild(img);
-                    });
-                } else if (response.status === 404) {
-                    imageResultArea.textContent = `Image generation queued. Task ID: ${scriptId}. Waiting for result... (Still polling)`;
-                } else {
-                    clearInterval(pollInterval);
-                    imageResultArea.textContent = `Error fetching images: ${data.error || 'Unknown error'}`;
-                }
-            } catch (error) {
-                console.error('DASHBOARD: Error during image polling:', error);
-                clearInterval(pollInterval);
-                imageResultArea.textContent = `Error during image polling: ${error.message}`;
-            }
-        }, 3000); // Poll every 3 seconds
-    }
-});
+    setTimeout(checkStatus, pollInterval); // Initial call after a short delay
+}

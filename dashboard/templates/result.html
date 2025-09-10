@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Generation Result{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Generation Result</h1>
+    
+    {% if script_content and image_urls %}
+        <div class="result-container">
+            <div class="script-panel">
+                <h2>Script</h2>
+                <pre>{{ script_content }}</pre>
+            </div>
+            <div class="image-panel">
+                <h2>Generated Images</h2>
+                <div class="image-gallery">
+                    {% for url in image_urls %}
+                        <img src="{{ url }}" alt="Generated Image">
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="panel">
+            <h2>No Result Found</h2>
+            <p>No script and images found. Please generate them from the <a href="/">Home</a> page.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

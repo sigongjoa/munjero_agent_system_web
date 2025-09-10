@@ -16,75 +16,44 @@ logging.basicConfig(
 redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
 
 # Redis Keys
-AGENT_COMMANDS_LIST = 'agent_commands_list'
-EXTENSION_RESPONSES_LIST = 'extension_responses_list'
-EXTENSION_STATUS_KEY = 'extension_connection_status' # Key to check extension status
-
-async def _wait_for_response(request_id: str, timeout: int = 60) -> str:
-    """
-    Waits for a specific response from the Chrome Extension based on request_id.
-    """
-    logging.info(f"TOOLS: _wait_for_response called for request_id: {request_id}")
-    start_time = asyncio.get_event_loop().time()
-    while True:
-        if asyncio.get_event_loop().time() - start_time > timeout:
-            logging.warning(f"TOOLS: Timeout waiting for response for request_id: {request_id}")
-            raise TimeoutError(f"Timeout waiting for response for request_id: {request_id}")
-
-        response_json_list = await redis_client.lrange(EXTENSION_RESPONSES_LIST, 0, -1)
-        logging.debug(f"TOOLS: Polling Redis. Found {len(response_json_list)} items in {EXTENSION_RESPONSES_LIST}")
-
-        for res_json in response_json_list:
-            try:
-                response_data = json.loads(res_json)
-                logging.debug(f"TOOLS: Checking item: {response_data.get('request_id')} vs target {request_id}")
-                if response_data.get('request_id') == request_id:
-                    logging.info(f"TOOLS: Found matching response for request_id: {request_id}")
-                    await redis_client.lrem(EXTENSION_RESPONSES_LIST, 1, res_json) # Remove the processed response
-                    return response_data.get('payload', '')
-            except json.JSONDecodeError:
-                logging.warning(f"TOOLS: Malformed JSON in Redis list: {res_json}")
-                continue
-        await asyncio.sleep(0.5) # Wait a bit before checking again
+PUPPETEER_TASKS_LIST = 'puppeteer_tasks_list' # Tasks for the Puppeteer worker
+PUPPETEER_RESPONSE_PREFIX = 'puppeteer_response:' # Prefix for Puppeteer responses in Redis
 
 async def send_message_to_chatgpt_tool(prompt: str, request_id: str) -> str:
     """
-    Pushes a message to the command list for the websocket server to pick up,
-    and waits for a response from the extension.
+    Pushes a message to the Puppeteer worker to send to ChatGPT,
+    and waits for a response from the Puppeteer worker.
     """
-    logging.info(f"TOOLS: send_message_to_chatgpt_tool called for request_id: {request_id}")
-    
-    # --- Wait for Extension to be Ready ---
-    logging.info(f"TOOLS: Waiting for extension to be ready for request_id: {request_id}")
-    ready_timeout = 30 # seconds
-    start_ready_time = asyncio.get_event_loop().time()
-    while True:
-        status = await redis_client.get(EXTENSION_STATUS_KEY)
-        if status == 'connected':
-            logging.info(f"TOOLS: Extension is connected for request_id: {request_id}")
-            break
-        if asyncio.get_event_loop().time() - start_ready_time > ready_timeout:
-            logging.error(f"TOOLS: Extension not connected within timeout for request_id: {request_id}")
-            return "Error: Extension not connected within timeout."
-        await asyncio.sleep(1) # Check every second
+    logging.info(f"TOOLS: send_message_to_chatgpt_tool called for request_id: {request_id} using Puppeteer.")
 
-    command_data = {
-        "type": "SEND_TO_CHATGPT",
+    task_payload = {
+        "type": "send_prompt",
         "payload": {
             "prompt": prompt,
             "request_id": request_id
         }
     }
 
-    await redis_client.lpush(AGENT_COMMANDS_LIST, json.dumps(command_data))
-    logging.info(f"TOOLS: Command pushed to {AGENT_COMMANDS_LIST} for request_id: {request_id}")
+    await redis_client.lpush(PUPPETEER_TASKS_LIST, json.dumps(task_payload))
+    logging.info(f"TOOLS: Task pushed to {PUPPETEER_TASKS_LIST} for request_id: {request_id}")
 
-    try:
-        chatgpt_response = await _wait_for_response(request_id)
-        return chatgpt_response
-    except TimeoutError as e:
-        logging.error(f"TOOLS: Timeout in send_message_to_chatgpt_tool for request_id: {request_id}")
-        return str(e)
+    # Wait for response from Puppeteer worker
+    response_key = f"{PUPPETEER_RESPONSE_PREFIX}{request_id}"
+    timeout = 180 # seconds
+    start_time = asyncio.get_event_loop().time()
+
+    while True:
+        if asyncio.get_event_loop().time() - start_time > timeout:
+            logging.error(f"TOOLS: Timeout waiting for Puppeteer response for request_id: {request_id}")
+            raise TimeoutError(f"Timeout waiting for Puppeteer response for request_id: {request_id}")
+
+        response_data_json = await redis_client.get(response_key)
+        if response_data_json:
+            await redis_client.delete(response_key) # Clean up the response
+            logging.info(f"TOOLS: Received Puppeteer response for request_id: {request_id}")
+            return response_data_json
+        
+        await asyncio.sleep(1) # Check every second
 
 async def generate_shorts_script(topic: str, script_id: str = None) -> str:
     """
@@ -94,10 +63,7 @@ async def generate_shorts_script(topic: str, script_id: str = None) -> str:
     if script_id is None:
         script_id = str(uuid.uuid4())
     logging.info(f"TOOLS: generate_shorts_script called for topic: {topic}, script_id: {script_id}")
-    prompt = f"""너는 숏폼 영상 전문가다. 다음 주제에 대해 질문하지 말고, 즉시 1분짜리 쇼츠 영상 대본을 생성해라. 
-대본은 반드시 [도입], [전개], [결말] 구조를 가져야 한다. 각 문장은 시각적으로 상상하기 쉽게 구체적으로 묘사해야 한다.
-
-주제: {topic}"""
+    prompt = f"""너는 숏폼 영상 전문가다. 다음 주제에 대해 질문하지 말고, 즉시 1분짜리 쇼츠 영상 대본을 생성해라. \n대본은 반드시 [도입], [전개], [결말] 구조를 가져야 한다. 각 문장은 시각적으로 상상하기 쉽게 구체적으로 묘사해야 한다.\n\n주제: {topic}"""
 
     try:
         generated_script = await send_message_to_chatgpt_tool(prompt, script_id)
@@ -154,8 +120,8 @@ async def generate_images_for_script(script_id: str) -> str:
             image_urls.append(f"https://dummyimage.com/1024x1024/ff0000/fff.png&text=Error+generating+image+{i+1}")
 
         # Add a significant delay to allow the UI to settle and image to fully render.
-        logging.info(f"TOOLS: Waiting for 60 seconds before next image prompt...")
-        await asyncio.sleep(60)
+        logging.info(f"TOOLS: Waiting for 180 seconds before next image prompt...")
+        await asyncio.sleep(180)
 
     image_urls_json = json.dumps(image_urls)
     await redis_client.set(f"images:{script_id}", image_urls_json)

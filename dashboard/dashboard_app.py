@@ -1,23 +1,35 @@
+import os
 from flask import Flask, render_template, jsonify, request
+from flask_cors import CORS
 import redis
 import json
 import sys
-import os
 import httpx
-from flask_cors import CORS
 import uuid
+import asyncio
+import websockets
+import time
+from scripts.websocket_server import GLOBAL_EXTENSION_READY_KEY # Import GLOBAL_EXTENSION_READY_KEY
 
-# This app is now fully synchronous. No more asyncio conflicts.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-app = Flask(__name__, template_folder='./templates', static_folder='./static')
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static"),
+    static_url_path="/static"
+)
 CORS(app) # Enable CORS for all routes
 
 # Use a standard synchronous Redis client
 redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
 
+# WebSocket server URL
+WEBSOCKET_SERVER_URL = "ws://websocket_server:8765" # Use service name for Docker Compose # Ensure this matches your websocket_server.py
+
 # --- Redis Keys ---
 AGENT_TASKS_LIST = 'agent_tasks'             # Tasks for the agent to perform (e.g., generate script)
-AGENT_COMMANDS_LIST = 'agent_commands_list'  # Low-level commands for the extension (e.g., type this)
+PUPPETEER_TASKS_LIST = 'puppeteer_tasks_list' # Tasks for the Puppeteer worker
 EXTENSION_RESPONSES_LIST = 'extension_responses_list' # Raw responses from the extension
 EXTENSION_STATUS_KEY = 'extension_connection_status'
 LAST_RECEIVED_DOM_KEY = 'last_received_dom'
@@ -33,31 +45,66 @@ def index():
 def dom_debugger():
     return render_template('dom_debugger.html')
 
+@app.route('/result')
+def result_page():
+    """Displays the latest generated script and images."""
+    script_content = None
+    image_urls = []
+    
+    latest_script_id = redis_client.get("latest_script_id")
+    
+    if latest_script_id:
+        script_content = redis_client.get(f"script:{latest_script_id}")
+        images_json = redis_client.get(f"images:{latest_script_id}")
+        if images_json:
+            try:
+                image_urls = json.loads(images_json)
+            except json.JSONDecodeError:
+                image_urls = [] # Handle case where JSON is malformed
+            
+    return render_template('result.html', script_content=script_content, image_urls=image_urls)
+
 @app.route('/send_data')
 def send_data_page():
     return render_template('send_data.html')
+
+@app.route('/dom-viewer')
+def dom_viewer_page():
+    return render_template('dom_viewer.html')
 
 
 # --- API Endpoints ---
 
 @app.route('/api/generate-script', methods=['POST'])
-def api_generate_script():
-    """Queues a task for the agent to generate a script."""
+def api_generate_script_and_images():
+    """Receives a script from the user, saves it, and queues a task for the agent to generate images."""
     data = request.get_json()
-    topic = data.get('topic')
-    if not topic:
-        return jsonify({"error": "Topic is required"}), 400
+    script_content = data.get('script_content')
+    if not script_content:
+        return jsonify({"error": "Script content is required"}), 400
     
-    task_id = str(uuid.uuid4())
+    # Create a new ID for this script and task
+    script_id = str(uuid.uuid4())
+    
+    # 1. Save the user-provided script to Redis
+    redis_client.set(f"script:{script_id}", script_content)
+    print(f"Dashboard: Saved user-provided script {script_id} to Redis.", flush=True, file=sys.stderr)
+
+    # Store this ID as the latest one so the result page can find it
+    redis_client.set("latest_script_id", script_id)
+    
+    # 2. Queue a task for the agent to generate images for this script
     task = {
-        "type": "generate_script",
-        "topic": topic,
-        "task_id": task_id
+        "type": "generate_images",
+        "script_id": script_id,
+        "task_id": script_id  # Use the same ID for simplicity in polling
     }
     
     redis_client.lpush(AGENT_TASKS_LIST, json.dumps(task))
-    print(f"Dashboard: Queued task {task_id} for topic '{topic}'", flush=True, file=sys.stderr)
-    return jsonify({"message": "Script generation task queued", "task_id": task_id}), 202
+    print(f"Dashboard: Queued task {script_id} for image generation.", flush=True, file=sys.stderr)
+    
+    # Return the ID so the frontend can start polling for images
+    return jsonify({"message": "Image generation task queued", "task_id": script_id}), 202
 
 @app.route('/api/generate-images', methods=['POST'])
 def api_generate_images():
@@ -97,24 +144,160 @@ def api_get_images(script_id):
     else:
         return jsonify({"error": "Images not found or not ready yet"}), 404
 
-@app.route('/api/direct_send_to_extension', methods=['POST'])
-def direct_send_to_extension():
-    """Sends a raw prompt directly to the extension via the websocket server."""
+@app.route('/api/task-status/<task_id>', methods=['GET'])
+def get_task_status(task_id):
+    """
+    Retrieves the status and result of a given task ID from Redis.
+    """
+    status = redis_client.get(f"task:{task_id}:status")
+    result = redis_client.get(f"task:{task_id}:result")
+
+    if status is None:
+        return jsonify({"status": "not_found", "message": "Task not found or not started yet."}), 404
+
+    response_data = {"status": status}
+    if result:
+        try:
+            response_data["result"] = json.loads(result)
+        except json.JSONDecodeError:
+            response_data["result"] = result # Return as string if not valid JSON
+    else:
+        response_data["result"] = None
+
+    return jsonify(response_data), 200
+
+@app.route('/api/send_prompt', methods=['POST'])
+def send_prompt_to_puppeteer_worker():
+    """Sends a prompt to the Puppeteer worker to be executed in a headless browser."""
     data = request.get_json()
     prompt = data.get('prompt')
     if not prompt:
         return jsonify({"error": "Prompt is required"}), 400
     
-    command = {
-        "type": "SEND_TO_CHATGPT",
+    task = {
+        "type": "send_prompt",
         "payload": {
             "prompt": prompt,
             "request_id": str(uuid.uuid4())
         }
     }
-    print(f"Dashboard (direct_send_to_extension): Pushing command to Redis: {json.dumps(command)}", flush=True, file=sys.stderr)
-    redis_client.lpush(AGENT_COMMANDS_LIST, json.dumps(command))
-    return jsonify({"message": f"Command '{prompt}' sent to extension."}), 200
+    
+    redis_client.lpush(PUPPETEER_TASKS_LIST, json.dumps(task))
+    print(f"Dashboard: Pushing task to Puppeteer worker: {json.dumps(task)}", flush=True, file=sys.stderr)
+    return jsonify({"message": f"Task for prompt '{prompt}' sent to Puppeteer worker."}), 200
+
+@app.route('/api/manual_login_setup', methods=['POST'])
+def api_manual_login_setup():
+    """
+    Queues a 'manual_login_setup' task for the Puppeteer Worker.
+    """
+    task_id = str(uuid.uuid4())
+    task = {
+        "type": "manual_login_setup",
+        "payload": {
+            "task_id": task_id
+        }
+    }
+
+    redis_client.lpush(PUPPETEER_TASKS_LIST, json.dumps(task))
+    print(f"Dashboard: Queued manual login setup task (Task ID: {task_id})", flush=True, file=sys.stderr)
+    return jsonify({"message": "Manual login setup task queued", "task_id": task_id}), 202
+
+@app.route('/api/crawl_dom', methods=['POST'])
+def api_crawl_dom():
+    """
+    Receives a URL, queues a 'dom_crawl' task for the Puppeteer Worker,
+    and returns a task_id for polling.
+    """
+    data = request.get_json()
+    url = data.get('url')
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    task_id = str(uuid.uuid4())
+    task = {
+        "type": "dom_crawl",
+        "payload": {
+            "url": url,
+            "task_id": task_id
+        }
+    }
+    
+    redis_client.lpush(PUPPETEER_TASKS_LIST, json.dumps(task))
+    print(f"Dashboard: Queued DOM crawl task for URL: {url} (Task ID: {task_id})", flush=True, file=sys.stderr)
+    return jsonify({"message": "DOM crawl task queued", "task_id": task_id}), 202
+
+@app.route('/api/dom_crawl_result/<task_id>', methods=['GET'])
+def api_get_dom_crawl_result(task_id):
+    """
+    Retrieves the result of a DOM crawl task from Redis.
+    """
+    dom_data_json = redis_client.get(f"puppeteer_domdump:{task_id}")
+    if dom_data_json:
+        try:
+            dom_data = json.loads(dom_data_json)
+            return jsonify({"status": "completed", "result": dom_data}), 200
+        except json.JSONDecodeError:
+            return jsonify({"status": "error", "message": "Failed to decode DOM data from Redis."}), 500
+    else:
+        # Task might still be processing or not found
+        return jsonify({"status": "processing", "message": "DOM crawl data not yet available or task not found."}), 202
+
+import io
+import csv
+from flask import Response, send_file
+
+def convert_dom_to_csv(dom_elements):
+    """
+    Converts a list of DOM element dictionaries into a CSV string.
+    """
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    headers = ["Tag", "ID", "Classes", "Selector", "Text", "Attributes"]
+    writer.writerow(headers)
+
+    for el in dom_elements:
+        tag = el.get("tag", "")
+        el_id = el.get("id", "")
+        classes = " ".join(el.get("classes", [])) if el.get("classes") else ""
+        selector = el.get("selector", "")
+        text = el.get("text", "")
+        
+        attributes_list = el.get("attributes", [])
+        attributes_str = "; ".join([f"{attr['name']}='{attr['value']}'" for attr in attributes_list])
+
+        writer.writerow([tag, el_id, classes, selector, text, attributes_str])
+    
+    return output.getvalue()
+
+@app.route('/api/download_dom_csv/<task_id>', methods=['GET'])
+def api_download_dom_csv(task_id):
+    """
+    Retrieves DOM crawl data from Redis and provides it as a CSV download.
+    """
+    dom_data_json = redis_client.get(f"puppeteer_domdump:{task_id}")
+    if not dom_data_json:
+        return jsonify({"error": "DOM crawl data not found or not ready."}), 404
+
+    try:
+        dom_data = json.loads(dom_data_json)
+    except json.JSONDecodeError:
+        return jsonify({"error": "Failed to decode DOM data from Redis."}), 500
+
+    # Check if the data contains an 'elements' key (from the worker's new error handling)
+    if "elements" in dom_data and isinstance(dom_data["elements"], list):
+        elements_to_process = dom_data["elements"]
+    elif isinstance(dom_data, list): # Fallback for older data or if 'elements' key is not used
+        elements_to_process = dom_data
+    else:
+        return jsonify({"error": "Invalid DOM data format in Redis."}), 500
+
+    csv_string = convert_dom_to_csv(elements_to_process)
+
+    response = Response(csv_string, mimetype='text/csv')
+    response.headers["Content-Disposition"] = f"attachment; filename=dom_crawl_{task_id}.csv"
+    return response
 
 @app.route('/api/extension_status')
 def get_extension_status():
@@ -165,6 +348,127 @@ def get_worker_status():
     """Checks the status of the agent worker."""
     status = redis_client.get('worker_status')
     return jsonify({"status": status or "not_ready"}), 200
+
+@app.route('/api/healthcheck')
+async def healthcheck():
+    """
+    Performs an end-to-end health check for Extension, Redis, and Agent.
+    """
+    health_status = {
+        "redis": {"status": "unknown", "message": "Not checked"},
+        "agent": {"status": "unknown", "message": "Not checked"},
+        "puppeteer_worker": {"status": "unknown", "message": "Not checked"},
+        "overall": "unhealthy",
+        "logs": []
+    }
+
+    def log(message):
+        health_status["logs"].append(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}")
+        print(message, flush=True, file=sys.stderr)
+
+    # --- 1. Redis Connectivity Check ---
+    log("Checking Redis connectivity...")
+    try:
+        redis_client.ping()
+        health_status["redis"]["status"] = "ok"
+        health_status["redis"]["message"] = "Connected"
+        log("Redis connection successful.")
+    except Exception as e:
+        health_status["redis"]["status"] = "error"
+        health_status["redis"]["message"] = f"Connection failed: {str(e)}"
+        log(f"Dashboard: Redis health check failed: {e}")
+
+    # --- 3. Agent Health Check (via Redis task) ---
+    log("Checking agent health via Redis task...")
+    agent_responsive = False
+    agent_healthcheck_task_id = str(uuid.uuid4())
+    agent_task_timeout = 10
+    agent_poll_interval = 1
+
+    try:
+        redis_client.lpush(AGENT_TASKS_LIST, json.dumps({"type": "healthcheck", "id": agent_healthcheck_task_id}))
+        log(f"Queued agent healthcheck task: {agent_healthcheck_task_id}")
+
+        start_time = time.time()
+        while time.time() - start_time < agent_task_timeout:
+            agent_result = redis_client.get(f"healthcheck_result:{agent_healthcheck_task_id}")
+            if agent_result == "OK":
+                agent_responsive = True
+                redis_client.delete(f"healthcheck_result:{agent_healthcheck_task_id}")
+                log(f"Agent responded to healthcheck task {agent_healthcheck_task_id}.")
+                break
+            await asyncio.sleep(agent_poll_interval)
+
+        if agent_responsive:
+            health_status["agent"]["status"] = "ok"
+            health_status["agent"]["message"] = "Responded to task"
+            log("Agent is responsive.")
+        else:
+            health_status["agent"]["status"] = "error"
+            health_status["agent"]["message"] = "Did not respond to task in time"
+            log("Agent did not respond to the healthcheck task in time.")
+
+    except Exception as e:
+        health_status["agent"]["status"] = "error"
+        health_status["agent"]["message"] = f"Task queuing failed: {str(e)}"
+        log(f"Agent health check task queuing failed: {e}")
+
+    # --- Puppeteer Worker Health Check ---
+    log("Checking Puppeteer Worker health via Redis task...")
+    puppeteer_responsive = False
+    puppeteer_healthcheck_task_id = str(uuid.uuid4())
+    puppeteer_task_timeout = 15 # seconds for puppeteer to respond
+    puppeteer_poll_interval = 1 # seconds
+
+    try:
+        # Push healthcheck task to Puppeteer Worker
+        puppeteer_task = {
+            "type": "healthcheck",
+            "id": puppeteer_healthcheck_task_id
+        }
+        redis_client.lpush(PUPPETEER_TASKS_LIST, json.dumps(puppeteer_task))
+        log(f"Queued Puppeteer worker healthcheck task: {puppeteer_healthcheck_task_id}")
+
+        start_time = time.time()
+        while time.time() - start_time < puppeteer_task_timeout:
+            # Log the key being queried
+            log(f"Dashboard: Checking Redis key: puppeteer_healthcheck_result:{puppeteer_healthcheck_task_id}")
+            puppeteer_result = redis_client.get(f"puppeteer_healthcheck_result:{puppeteer_healthcheck_task_id}")
+            if puppeteer_result:
+                try:
+                    puppeteer_result_json = json.loads(puppeteer_result)
+                    if puppeteer_result_json.get("status") == "ok":
+                        puppeteer_responsive = True
+                        redis_client.delete(f"puppeteer_healthcheck_result:{puppeteer_healthcheck_task_id}") # Clean up
+                        log(f"Puppeteer worker responded to healthcheck task {puppeteer_healthcheck_task_id}. Result: {puppeteer_result}")
+                        break
+                except json.JSONDecodeError:
+                    log(f"Dashboard: Failed to decode JSON from Redis for Puppeteer worker healthcheck. Value: {puppeteer_result}")
+            await asyncio.sleep(puppeteer_poll_interval)
+
+        if puppeteer_responsive:
+            health_status["puppeteer_worker"]["status"] = "ok"
+            health_status["puppeteer_worker"]["message"] = "Responded to task"
+            log("Puppeteer worker is responsive.")
+        else:
+            health_status["puppeteer_worker"]["status"] = "error"
+            health_status["puppeteer_worker"]["message"] = "Did not respond to task in time"
+            log("Puppeteer worker did not respond to the healthcheck task in time.")
+
+    except Exception as e:
+        health_status["puppeteer_worker"]["status"] = "error"
+        health_status["puppeteer_worker"]["message"] = f"Task queuing failed: {str(e)}"
+        log(f"Puppeteer worker health check task queuing failed: {e}")
+
+    # --- 5. Overall Health Status ---
+    if (health_status["redis"]["status"] == "ok" and
+        health_status["agent"]["status"] == "ok" and
+        health_status["puppeteer_worker"]["status"] == "ok"):
+        health_status["overall"] = "healthy"
+    else:
+        health_status["overall"] = "unhealthy"
+
+    return jsonify(health_status)
 
 
 if __name__ == "__main__":
