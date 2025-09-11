@@ -1,9 +1,0 @@
-sentence-transformers
-faiss-cpu
-langchain
-Flask
-PyPDF2
-pdfplumber
-rq
-websockets
-openai

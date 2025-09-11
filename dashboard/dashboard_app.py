@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_cors import CORS
 import redis
 import json
@@ -10,6 +10,27 @@ import asyncio
 import websockets
 import time
 from scripts.websocket_server import GLOBAL_EXTENSION_READY_KEY # Import GLOBAL_EXTENSION_READY_KEY
+
+DATA_DIR = os.path.join("/app", "data") # Define DATA_DIR here
+
+def check_data_dir():
+    try:
+        if not os.path.exists(DATA_DIR):
+            os.makedirs(DATA_DIR, exist_ok=True)
+            print(f"[INIT] Data directory created: {DATA_DIR}", flush=True)
+        test_file = os.path.join(DATA_DIR, "init_check.txt")
+        with open(test_file, "w") as f:
+            f.write("data-dir-ok")
+        with open(test_file, "r") as f:
+            check = f.read().strip()
+        os.remove(test_file)
+        print(f"[INIT] Data directory write/read OK: {check}", flush=True)
+    except Exception as e:
+        print(f"[INIT] Data directory check failed: {e}", flush=True)
+        raise
+
+# Call the check at the beginning of the script
+check_data_dir()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -40,6 +61,11 @@ LAST_RECEIVED_DOM_KEY = 'last_received_dom'
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/data/<path:filename>')
+def serve_data_file(filename):
+    """Serves files from the data directory."""
+    return send_from_directory(DATA_DIR, filename)
 
 @app.route('/dom-debugger')
 def dom_debugger():
@@ -242,6 +268,57 @@ def api_get_dom_crawl_result(task_id):
     else:
         # Task might still be processing or not found
         return jsonify({"status": "processing", "message": "DOM crawl data not yet available or task not found."}), 202
+
+@app.route('/api/generate_image_task', methods=['POST'])
+def api_generate_image_task():
+    """
+    Receives a prompt, queues a 'generate_image_from_prompt' task for the Puppeteer Worker,
+    and returns a task_id for polling.
+    """
+    data = request.get_json()
+    prompt = data.get('prompt')
+    if not prompt:
+        return jsonify({"error": "Prompt is required"}), 400
+
+    task_id = str(uuid.uuid4())
+    task = {
+        "type": "generate_image_from_prompt",
+        "payload": {
+            "prompt": prompt,
+            "task_id": task_id
+        }
+    }
+
+    # Server-side safeguard against duplicate tasks
+    # Check if a similar task was recently queued (e.g., within the last 5 seconds)
+    # This is a simple check and can be made more sophisticated if needed.
+    last_task_key = f"last_puppeteer_task:{prompt}"
+    last_task_timestamp = redis_client.get(last_task_key)
+
+    if last_task_timestamp and (time.time() - float(last_task_timestamp)) < 5: # 5 seconds debounce
+        print(f"Dashboard: Duplicate task for prompt '{prompt}' detected and ignored.", flush=True, file=sys.stderr)
+        return jsonify({"message": "Duplicate task detected and ignored."}), 200 # Return 200 OK to avoid frontend error
+
+    redis_client.lpush(PUPPETEER_TASKS_LIST, json.dumps(task))
+    redis_client.set(last_task_key, time.time()) # Update timestamp for this prompt
+    print(f"Dashboard: Queued image generation task for prompt: '{prompt}' (Task ID: {task_id})", flush=True, file=sys.stderr)
+    return jsonify({"message": "Image generation task queued", "task_id": task_id}), 202
+
+@app.route('/api/image_generation_result/<task_id>', methods=['GET'])
+def api_get_image_generation_result(task_id):
+    """
+    Retrieves the result of an image generation task from Redis.
+    """
+    image_result_json = redis_client.get(f"puppeteer_image_generation_result:{task_id}")
+    if image_result_json:
+        try:
+            image_result = json.loads(image_result_json)
+            return jsonify({"status": "completed", "result": image_result}), 200
+        except json.JSONDecodeError:
+            return jsonify({"status": "error", "message": "Failed to decode image generation result from Redis."}), 500
+    else:
+        # Task might still be processing or not found
+        return jsonify({"status": "processing", "message": "Image generation result not yet available or task not found."}), 202
 
 import io
 import csv
