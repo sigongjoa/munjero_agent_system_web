@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <title>문제의 바다: AI 문제은행 마켓플레이스</title>
+    <meta name="description" content="AI로 나만의 학습 문제를 만들고 공유하세요. 수능, PSAT, NCS 등 모든 시험 대비가 가능한 커뮤니티 기반 문제은행 플랫폼, 문제의 바다입니다." />
+    <meta name="keywords" content="AI, 문제은행, 문제 생성, 학습, 수능, PSAT, NCS, 커뮤니티, 마켓플레이스, 퀴즈, AI 문제 생성기, 인공지능 문제" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="문제의 바다: AI 문제은행 마켓플레이스" />
+    <meta property="og:description" content="AI로 나만의 학습 문제를 만들고 공유하세요. 수능, PSAT, NCS 등 모든 시험 대비가 가능한 커뮤니티 기반 문제은행 플랫폼, 문제의 바다입니다." />
+    <!-- <meta property="og:image" content="URL_to_your_image.jpg"> -->
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:title" content="문제의 바다: AI 문제은행 마켓플레이스" />
+    <meta property="twitter:description" content="AI로 나만의 학습 문제를 만들고 공유하세요. 수능, PSAT, NCS 등 모든 시험 대비가 가능한 커뮤니티 기반 문제은행 플랫폼, 문제의 바다입니다." />
+    <!-- <meta property="twitter:image" content="URL_to_your_image.jpg"> -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                '50': '#f0faff',
+                '100': '#e0f4ff',
+                '200': '#b9eaff',
+                '300': '#85dcff',
+                '400': '#4cc2ff',
+                '500': '#21a3ff',
+                '600': '#0084ff',
+                '700': '#006dff',
+                '800': '#0058d1',
+                '900': '#0049a3',
+                '950': '#00295c',
+              },
+            }
+          }
+        }
+      }
+    </script>
+    <!-- Removed CDN script tags for pdfmake to use module imports instead -->
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.10.0",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react": "https://esm.sh/react@18.2.0",
+    "pdfmake/build/pdfmake": "https://esm.sh/pdfmake@0.2.10/build/pdfmake.js",
+    "pdfmake/": "https://esm.sh/pdfmake@^0.2.20/",
+    "html-to-image": "https://esm.sh/html-to-image@1.11.11"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-100">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

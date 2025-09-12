@@ -1,0 +1,5 @@
+2025/09/12-07:53:27.294 48 Reusing MANIFEST /app/user_data/Default/IndexedDB/https_app.typecast.ai_0.indexeddb.leveldb/MANIFEST-000001
+2025/09/12-07:53:27.440 48 Recovering log #4
+2025/09/12-07:53:27.445 48 Reusing old log /app/user_data/Default/IndexedDB/https_app.typecast.ai_0.indexeddb.leveldb/000004.log 
+2025/09/12-07:53:27.806 29 Manual compaction at level-0 from '\x00\x07\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x08\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/09/12-07:53:55.692 26 Manual compaction at level-0 from '\x00\x08\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x09\x00\x00\x00' @ 0 : 0; will stop at (end)
