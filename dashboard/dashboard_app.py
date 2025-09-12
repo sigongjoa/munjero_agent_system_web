@@ -98,6 +98,10 @@ def send_data_page():
 def dom_viewer_page():
     return render_template('dom_viewer.html')
 
+@app.route('/typecast_tts')
+def typecast_tts_page():
+    return render_template('typecast_tts.html')
+
 
 # --- API Endpoints ---
 
@@ -544,6 +548,18 @@ async def healthcheck():
         health_status["overall"] = "healthy"
     else:
         health_status["overall"] = "unhealthy"
+
+    # Read Puppeteer worker logs and add to health_status
+    puppeteer_log_path = "/app/puppeteer_worker_logs.txt" # This path is relative to the Docker container's /app
+    try:
+        if os.path.exists(puppeteer_log_path):
+            with open(puppeteer_log_path, 'r') as f:
+                log_content = f.readlines()
+                health_status["logs"].extend([f"[PUPPETEER_LOG] {line.strip()}" for line in log_content])
+        else:
+            health_status["logs"].append(f"[PUPPETEER_LOG] Log file not found at {puppeteer_log_path}")
+    except Exception as e:
+        health_status["logs"].append(f"[PUPPETEER_LOG] Error reading log file: {str(e)}")
 
     return jsonify(health_status)
 

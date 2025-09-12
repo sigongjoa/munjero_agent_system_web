@@ -119,10 +119,24 @@ async function executeTask(task, redisClient) {
     const page = await getBrowser();
 
     if (task.type === "healthcheck") {
-        importantLog("[PUPPETEER]  Running full Puppeteer healthcheck...");
+        importantLog("[PUPPETEER] Running full Puppeteer healthcheck...");
+        const healthcheckResults = {
+            overall: "error",
+            message: "Healthcheck not completed.",
+            details: {
+                browserLaunch: { status: "error", message: "Browser not launched." },
+                chatgpt: { login: "not_checked", text_input: "not_checked", message: "ChatGPT not checked." },
+                typecast: { login: "not_checked", text_input: "not_checked", message: "Typecast not checked." }
+            },
+            timestamp: new Date().toISOString()
+        };
+
+        let browserInstance;
+        let pageInstance;
+
         try {
-            importantLog("[PUPPETEER] Attempting to launch browser...");
-            const browser = await puppeteer.launch({
+            importantLog("[PUPPETEER] Attempting to launch browser for healthcheck...");
+            browserInstance = await puppeteer.launch({
                 headless: false,
                 executablePath: '/usr/bin/google-chrome-stable',
                 args: [
@@ -131,36 +145,122 @@ async function executeTask(task, redisClient) {
                     '--disable-dev-shm-usage'
                 ]
             });
-            importantLog("[PUPPETEER] Browser launched successfully.");
+            pageInstance = await browserInstance.newPage();
+            healthcheckResults.details.browserLaunch = { status: "ok", message: "Browser launched successfully." };
+            importantLog("[PUPPETEER] Browser launched successfully for healthcheck.");
 
-            importantLog("[PUPPETEER] Creating new page...");
-            const page = await browser.newPage();
-            importantLog("[PUPPETEER] Page created.");
+            // --- ChatGPT Health Check ---
+            importantLog("[PUPPETEER] Checking ChatGPT login and text input...");
+            try {
+                await pageInstance.goto("https://chat.openai.com/", { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await pageInstance.waitForTimeout(2000); // Give it some time to render
 
-            importantLog("[PUPPETEER] Navigating to about:blank...");
-            await page.goto("about:blank");
-            importantLog("[PUPPETEER] Navigated to about:blank.");
+                // Check login status
+                const chatgptLoggedIn = await pageInstance.evaluate(() => {
+                    return document.querySelector('div.flex.min-w-0.grow.items-center') !== null;
+                });
 
-            importantLog("[PUPPETEER] Setting healthcheck result to Redis (OK)...");
-            await redisClient.set(`puppeteer_healthcheck_result:${task.id}`, JSON.stringify({
-                status: "ok",
-                message: `Puppeteer launched successfully and navigated to about:blank.`,
-                timestamp: new Date().toISOString()
-            }), { EX: 15 });
-            importantLog("[PUPPETEER] Healthcheck result set to Redis (OK).");
+                if (chatgptLoggedIn) {
+                    healthcheckResults.details.chatgpt.login = "ok";
+                    healthcheckResults.details.chatgpt.message = "Logged in.";
 
-            importantLog("[PUPPETEER] Closing browser...");
-            await browser.close();
-            importantLog("[PUPPETEER] Browser closed.");
+                    // Check text input
+                    const promptInputSelector = '#prompt-textarea';
+                    const canType = await pageInstance.evaluate((selector) => {
+                        const el = document.querySelector(selector);
+                        if (el) {
+                            el.value = 'test message';
+                            return el.value === 'test message';
+                        }
+                        return false;
+                    }, promptInputSelector);
+
+                    if (canType) {
+                        healthcheckResults.details.chatgpt.text_input = "ok";
+                        healthcheckResults.details.chatgpt.message += " Text input successful.";
+                    } else {
+                        healthcheckResults.details.chatgpt.text_input = "error";
+                        healthcheckResults.details.chatgpt.message += " Text input failed.";
+                    }
+                } else {
+                    healthcheckResults.details.chatgpt.login = "error";
+                    healthcheckResults.details.chatgpt.message = "Not logged in.";
+                }
+            } catch (chatgptErr) {
+                healthcheckResults.details.chatgpt.login = "error";
+                healthcheckResults.details.chatgpt.text_input = "error";
+                healthcheckResults.details.chatgpt.message = `Error during ChatGPT check: ${chatgptErr.message}`;
+                importantLog(`[PUPPETEER] Error during ChatGPT healthcheck: ${chatgptErr.message}`);
+            }
+
+            // --- Typecast Health Check ---
+            importantLog("[PUPPETEER] Checking Typecast login and text input...");
+            try {
+                await pageInstance.goto("https://app.typecast.ai/ko/editor/68c3954a7c0b34aac16ca8e7", { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await pageInstance.waitForTimeout(2000); // Give it some time to render
+
+                // Check login status
+                const typecastLoggedIn = await pageInstance.evaluate(() => {
+                    return document.querySelector('p[data-actor-id]') !== null;
+                });
+
+                if (typecastLoggedIn) {
+                    healthcheckResults.details.typecast.login = "ok";
+                    healthcheckResults.details.typecast.message = "Logged in.";
+
+                    // Check text input
+                    const scriptAreaSelector = 'p[data-actor-id="603fa172a669dfd23f450abd"]';
+                    const canType = await pageInstance.evaluate((selector) => {
+                        const el = document.querySelector(selector);
+                        if (el) {
+                            el.textContent = 'test message';
+                            return el.textContent === 'test message';
+                        }
+                        return false;
+                    }, scriptAreaSelector);
+
+                    if (canType) {
+                        healthcheckResults.details.typecast.text_input = "ok";
+                        healthcheckResults.details.typecast.message += " Text input successful.";
+                    } else {
+                        healthcheckResults.details.typecast.text_input = "error";
+                        healthcheckResults.details.typecast.message += " Text input failed.";
+                    }
+                } else {
+                    healthcheckResults.details.typecast.login = "error";
+                    healthcheckResults.details.typecast.message = "Not logged in.";
+                }
+            } catch (typecastErr) {
+                healthcheckResults.details.typecast.login = "error";
+                healthcheckResults.details.typecast.text_input = "error";
+                healthcheckResults.details.typecast.message = `Error during Typecast check: ${typecastErr.message}`;
+                importantLog(`[PUPPETEER] Error during Typecast healthcheck: ${typecastErr.message}`);
+            }
+
+            // Determine overall status
+            if (healthcheckResults.details.browserLaunch.status === "ok" &&
+                healthcheckResults.details.chatgpt.login === "ok" &&
+                healthcheckResults.details.chatgpt.text_input === "ok" &&
+                healthcheckResults.details.typecast.login === "ok" &&
+                healthcheckResults.details.typecast.text_input === "ok") {
+                healthcheckResults.overall = "ok";
+                healthcheckResults.message = "All Puppeteer checks passed.";
+            } else {
+                healthcheckResults.overall = "error";
+                healthcheckResults.message = "Some Puppeteer checks failed. See details.";
+            }
+
         } catch (err) {
-            importantLog("[PUPPETEER] ❌ Healthcheck failed:", err);
-            importantLog("[PUPPETEER] Setting healthcheck result to Redis (ERROR)...");
-            await redisClient.set(`puppeteer_healthcheck_result:${task.id}`, JSON.stringify({
-                status: "error",
-                message: err.message,
-                timestamp: new Date().toISOString()
-            }), { EX: 15 });
-            importantLog("[PUPPETEER] Healthcheck result set to Redis (ERROR).");
+            healthcheckResults.overall = "error";
+            healthcheckResults.message = `Puppeteer healthcheck failed: ${err.message}`;
+            importantLog("[PUPPETEER] ❌ Overall Puppeteer Healthcheck failed:", err);
+        } finally {
+            if (browserInstance) {
+                await browserInstance.close();
+                importantLog("[PUPPETEER] Browser closed after healthcheck.");
+            }
+            await redisClient.set(`puppeteer_healthcheck_result:${task.id}`, JSON.stringify(healthcheckResults), { EX: 15 });
+            importantLog("[PUPPETEER] Healthcheck result set to Redis.");
         }
         return;
     }

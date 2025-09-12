@@ -118,9 +118,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 let componentStatusText = 'Component Statuses:\n';
                 componentStatusText += `Redis: ${data.redis?.status === 'ok' ? '✅' : '❌'} ${data.redis?.message || ''}\n`;
                 componentStatusText += `Agent: ${data.agent?.status === 'ok' ? '✅' : '❌'} ${data.agent?.message || ''}\n`;
-                componentStatusText += `Puppeteer Worker: ${data.puppeteer_worker?.status === 'ok' ? '✅' : '❌'} ${data.puppeteer_worker?.message || ''}\n`;
-                
-                
+
+                // Detailed Puppeteer Worker status
+                const puppeteerWorker = data.puppeteer_worker;
+                if (puppeteerWorker) {
+                    componentStatusText += `Puppeteer Worker: ${puppeteerWorker.overall === 'ok' ? '✅' : '❌'} ${puppeteerWorker.message || ''}\n`;
+                    if (puppeteerWorker.details) {
+                        componentStatusText += `  - Browser Launch: ${puppeteerWorker.details.browserLaunch?.status === 'ok' ? '✅' : '❌'} ${puppeteerWorker.details.browserLaunch?.message || ''}\n`;
+                        componentStatusText += `  - ChatGPT Login: ${puppeteerWorker.details.chatgpt?.login === 'ok' ? '✅' : '❌'} ${puppeteerWorker.details.chatgpt?.message || ''}\n`;
+                        componentStatusText += `  - ChatGPT Text Input: ${puppeteerWorker.details.chatgpt?.text_input === 'ok' ? '✅' : '❌'} ${puppeteerWorker.details.chatgpt?.message || ''}\n`;
+                        componentStatusText += `  - Typecast Login: ${puppeteerWorker.details.typecast?.login === 'ok' ? '✅' : '❌'} ${puppeteerWorker.details.typecast?.message || ''}\n`;
+                        componentStatusText += `  - Typecast Text Input: ${puppeteerWorker.details.typecast?.text_input === 'ok' ? '✅' : '❌'} ${puppeteerWorker.details.typecast?.message || ''}\n`;
+                    }
+                } else {
+                    componentStatusText += `Puppeteer Worker: ❌ Not available\n`;
+                }
+
                 // Display logs
                 if (data.logs && data.logs.length > 0) {
                     healthcheckLogsPre.textContent = componentStatusText + '\n--- Logs ---\n' + data.logs.join('\n');

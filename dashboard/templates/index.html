@@ -61,17 +61,7 @@
         </div>
     </div>
 
-    <div class="panel">
-        <h2>Typecast TTS Generation</h2>
-        <div class="tts-section">
-            <h3>Text to Speech</h3>
-            <textarea id="tts-text-input" placeholder="Enter text to convert to speech..." required rows="5" style="width: 100%; box-sizing: border-box; margin-bottom: 10px;"></textarea>
-            <input type="text" id="tts-filename-input" placeholder="Enter desired filename (e.g., my_audio)" required style="width: 100%; box-sizing: border-box; margin-bottom: 10px;">
-            <button type="button" id="generate-tts-btn">Generate TTS</button>
-            <button type="button" id="manual-login-typecast-btn">Manual Login (Typecast)</button>
-            <p id="tts-status" style="margin-top: 10px;"></p>
-        </div>
-    </div>
+    
 </div>
 
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
