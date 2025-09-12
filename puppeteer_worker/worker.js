@@ -3,6 +3,7 @@ const puppeteer = require("puppeteer");
 const https = require("https");
 const fs = require('fs');
 const util = require('util');
+const { generateTypecastTTS, saveSession: saveTypecastSession, loadSession: loadTypecastSession, COOKIES_FILE: TYPECAST_COOKIES_FILE, LOCAL_STORAGE_FILE: TYPECAST_LOCAL_STORAGE_FILE } = require("./typecast_tts");
 
 const logFile = fs.createWriteStream('/app/puppeteer_worker_logs.txt', { flags: 'a' });
 
@@ -91,6 +92,23 @@ async function getBrowser() {
         });
         // --- End Enhanced Logging ---
         importantLog("[PUPPETEER] Browser instance created.");
+
+        // Load ChatGPT session if files exist
+        if (fs.existsSync(COOKIES_FILE)) {
+            const cookiesString = fs.readFileSync(COOKIES_FILE);
+            const cookies = JSON.parse(cookiesString);
+            await page.setCookie(...cookies);
+            importantLog("[PUPPETEER] Loaded ChatGPT cookies.");
+        }
+        if (fs.existsSync(LOCAL_STORAGE_FILE)) {
+            const localStorageData = JSON.parse(fs.readFileSync(LOCAL_STORAGE_FILE));
+            await page.evaluate(data => {
+                for (const key in data) {
+                    localStorage.setItem(key, data[key]);
+                }
+            }, localStorageData);
+            importantLog("[PUPPETEER] Loaded ChatGPT localStorage.");
+        }
     }
     return page;
 }
@@ -190,6 +208,40 @@ async function executeTask(task, redisClient) {
             }
             throw error; // Re-throw to propagate the error to the main loop
         }
+    } else if (task.type === "manual_login_setup_typecast") {
+        importantLog("[PUPPETEER] Starting manual login setup for Typecast...");
+        importantLog("[PUPPETEER] Navigating to Typecast for manual login...");
+        await page.goto("https://app.typecast.ai/ko/editor/68c3954a7c0b34aac16ca8e7", { waitUntil: 'domcontentloaded' });
+
+        importantLog("[PUPPETEER] Please login manually in the opened browser for Typecast...");
+        try {
+            // Wait for an element that indicates successful login to Typecast
+            await page.waitForSelector('p[data-actor-id="603fa172a669dfd23f450abd"]', { timeout: 0 });
+            importantLog("✅ Typecast Login successful - Editor element detected.");
+
+            await saveTypecastSession(page);
+
+            importantLog("✅ Typecast session saved automatically.");
+            return; // Exit after setup
+        } catch (error) {
+            importantLog("[PUPPETEER] Error during Typecast manual login setup:", error);
+            if (browser) {
+                await browser.close();
+                browser = null;
+                page = null;
+                importantLog("[PUPPETEER] Browser closed due to Typecast manual login setup error.");
+            }
+            throw error; // Re-throw to propagate the error to the main loop
+        }
+    } else if (task.type === "generate_tts_typecast") {
+        const { text_to_convert, filename, task_id } = task.payload;
+        importantLog(`[PUPPETEER] Generating Typecast TTS for task: ${task_id}`);
+
+        const result = await generateTypecastTTS(page, text_to_convert, filename, task_id, redisClient);
+
+        await redisClient.set(PUPPETEER_RESPONSE_PREFIX + task_id, JSON.stringify(result), { EX: 600 });
+        importantLog(`[PUPPETEER] Typecast TTS result for task ${task_id} reported to Redis.`);
+
     } else if (task.type === "dom_crawl") {
         const { url, task_id } = task.payload;
         importantLog(`[PUPPETEER] Crawling DOM for URL: ${url} (Task ID: ${task_id})...`);

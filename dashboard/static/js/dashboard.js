@@ -1,5 +1,101 @@
 document.addEventListener('DOMContentLoaded', () => {
     console.log("dashboard.js loaded and DOMContentLoaded fired.");
+
+    // --- WebSocket Setup ---
+    let ws;
+    const connectWebSocket = () => {
+        ws = new WebSocket('ws://localhost:8765'); // Adjust WebSocket server address if needed
+
+        ws.onopen = () => {
+            console.log('WebSocket connected.');
+            // You might want to send an INIT_PING here if the server expects it
+        };
+
+        ws.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            console.log('WebSocket message received:', message);
+
+            const ttsStatus = document.getElementById('tts-status');
+
+            switch (message.type) {
+                case 'TTS_GENERATION_RESULT':
+                    if (message.payload.status === 'success') {
+                        ttsStatus.innerHTML = `TTS Generation Successful! Download: <a href="${message.payload.filePath}" target="_blank">${message.payload.filePath.split('/').pop()}</a>`;
+                    } else {
+                        ttsStatus.textContent = `TTS Generation Failed: ${message.payload.message}`;
+                    }
+                    break;
+                case 'MANUAL_LOGIN_TYPECAST_RESULT':
+                    if (message.payload.status === 'success') {
+                        ttsStatus.textContent = `Typecast Manual Login: ${message.payload.message}`;
+                    } else {
+                        ttsStatus.textContent = `Typecast Manual Login Failed: ${message.payload.message}`;
+                    }
+                    break;
+                // Add other message types if needed
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            // Handle error, e.g., try to reconnect
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket disconnected. Attempting to reconnect in 5 seconds...');
+            setTimeout(connectWebSocket, 5000); // Attempt to reconnect after 5 seconds
+        };
+    };
+
+    connectWebSocket(); // Initial WebSocket connection
+
+    // --- Typecast TTS Elements and Event Listeners ---
+    const ttsTextInput = document.getElementById('tts-text-input');
+    const ttsFilenameInput = document.getElementById('tts-filename-input');
+    const generateTtsBtn = document.getElementById('generate-tts-btn');
+    const manualLoginTypecastBtn = document.getElementById('manual-login-typecast-btn');
+    const ttsStatus = document.getElementById('tts-status');
+
+    if (generateTtsBtn) {
+        generateTtsBtn.addEventListener('click', () => {
+            const textToConvert = ttsTextInput.value;
+            const filename = ttsFilenameInput.value;
+
+            if (!textToConvert || !filename) {
+                alert('Please enter both text and a filename for TTS generation.');
+                return;
+            }
+
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'generate_tts_typecast',
+                    payload: {
+                        text_to_convert: textToConvert,
+                        filename: filename
+                    }
+                }));
+                ttsStatus.textContent = 'Generating TTS... Please wait.';
+            } else {
+                ttsStatus.textContent = 'WebSocket not connected. Please refresh the page.';
+                console.error('WebSocket is not open.');
+            }
+        });
+    }
+
+    if (manualLoginTypecastBtn) {
+        manualLoginTypecastBtn.addEventListener('click', () => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'manual_login_setup_typecast'
+                }));
+                ttsStatus.textContent = 'Launching browser for manual Typecast login. Please log in there.';
+            } else {
+                ttsStatus.textContent = 'WebSocket not connected. Please refresh the page.';
+                console.error('WebSocket is not open.');
+            }
+        });
+    }
+
     const checkHealthStatusBtn = document.getElementById('check-health-status');
     const healthStatusSpan = document.getElementById('health-status');
     const healthcheckLogsPre = document.getElementById('healthcheck-logs');

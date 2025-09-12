@@ -41,3 +41,7 @@ puppeteer_worker/puppeteer_worker_logs.txt
 *.json
 *.bin
 *.map
+
+# Typecast Session Files
+puppeteer_worker/typecast_cookies.json
+puppeteer_worker/typecast_localStorage.json

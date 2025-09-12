@@ -11,6 +11,10 @@ import time
 import uuid
 
 # Configure detailed logging
+
+PUPPETEER_TASKS_LIST = "puppeteer_tasks_list"
+PUPPETEER_RESPONSE_PREFIX = 'puppeteer_response:'
+
 logging.basicConfig(
     level=logging.INFO,
     stream=sys.stdout,
@@ -48,6 +52,24 @@ async def broadcast_to_clients(message: str, exclude_client=None):
             logging.warning(f"Failed to send message to client {client.remote_address}: {result}")
 
     logging.info(f"-> Broadcast completed for message: {message}")
+
+async def wait_for_puppeteer_result(aredis_client, task_id, websocket, response_type):
+    result_key = f"{PUPPETEER_RESPONSE_PREFIX}{task_id}"
+    timeout = 300  # 5 minutes timeout
+    start_time = time.time()
+    
+    while time.time() - start_time < timeout:
+        result_json = await aredis_client.get(result_key)
+        if result_json:
+            logging.info(f"Puppeteer result found for task {task_id}.")
+            result = json.loads(result_json)
+            await websocket.send(json.dumps({"type": response_type, "payload": result, "task_id": task_id}))
+            await aredis_client.delete(result_key) # Clean up Redis
+            return
+        await asyncio.sleep(1) # Check every second
+    
+    logging.warning(f"Timeout waiting for Puppeteer result for task {task_id}.")
+    await websocket.send(json.dumps({"type": response_type, "payload": {"status": "error", "message": "Timeout"}, "task_id": task_id}))
 
 def redis_listener_thread(loop):
     """Listens to Redis in a blocking way and schedules broadcasts on the main event loop."""
@@ -153,6 +175,41 @@ async def register_client(websocket):
                         await broadcast_to_clients(json.dumps(script_message))
                     else:
                         logging.warning("CHATGPT_OUTPUT received without a payload.")
+                elif data.get('type') == 'manual_login_setup_typecast':
+                    logging.info(f"Received manual_login_setup_typecast request from {websocket.remote_address}.")
+                    task_id = str(uuid.uuid4())
+                    puppeteer_task = {
+                        "type": "manual_login_setup_typecast",
+                        "payload": {
+                            "task_id": task_id
+                        }
+                    }
+                    await aredis_client.lpush(PUPPETEER_TASKS_LIST, json.dumps(puppeteer_task))
+                    asyncio.create_task(wait_for_puppeteer_result(aredis_client, task_id, websocket, "MANUAL_LOGIN_TYPECAST_RESULT"))
+                    logging.info(f"Pushed manual_login_setup_typecast task {task_id} to Puppeteer queue.")
+
+                elif data.get('type') == 'generate_tts_typecast':
+                    logging.info(f"Received generate_tts_typecast request from {websocket.remote_address}.")
+                    text_to_convert = data.get('payload', {}).get('text_to_convert')
+                    filename = data.get('payload', {}).get('filename')
+                    if not text_to_convert or not filename:
+                        logging.warning("generate_tts_typecast request missing text_to_convert or filename.")
+                        await websocket.send(json.dumps({"type": "TTS_GENERATION_ERROR", "payload": {"message": "Missing text or filename"}}))
+                        return
+                    
+                    task_id = str(uuid.uuid4())
+                    puppeteer_task = {
+                        "type": "generate_tts_typecast",
+                        "payload": {
+                            "text_to_convert": text_to_convert,
+                            "filename": filename,
+                            "task_id": task_id
+                        }
+                    }
+                    await aredis_client.lpush(PUPPETEER_TASKS_LIST, json.dumps(puppeteer_task))
+                    asyncio.create_task(wait_for_puppeteer_result(aredis_client, task_id, websocket, "TTS_GENERATION_RESULT"))
+                    logging.info(f"Pushed generate_tts_typecast task {task_id} to Puppeteer queue.")
+
                 elif data.get('type') == 'KEEP_ALIVE':
                     logging.info(f"Received KEEP_ALIVE from {websocket.remote_address}. Timestamp: {data.get('timestamp')}")
                 else:
