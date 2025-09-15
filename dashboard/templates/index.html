@@ -4,14 +4,7 @@
 
 {% block content %}
 <div class="container">
-    <h1>ChatGPT Remote Control</h1>
-
-    <div class="panel" id="global-image-display-panel">
-        <h2>Generated Images</h2>
-        <div id="image-display-area">
-            <!-- Images will be loaded here from either source -->
-        </div>
-    </div>
+    <h1>Agent Dashboard</h1>
 
     <div class="panel">
         <h2>System Health</h2>
@@ -26,42 +19,6 @@
     </div>
 
     <div class="panel">
-        <h2>Send Message to ChatGPT</h2>
-        <form id="control-form">
-            <input type="text" id="prompt-input" placeholder="Enter text to send to ChatGPT..." required>
-            <button type="submit">Send</button>
-        </form>
-    </div>
-
-    <div class="panel">
-        <h2>Response from ChatGPT</h2>
-        <div id="response-area">Waiting for response...</div>
-    </div>
-
-    <div class="panel">
-        <h2>Generate Image from Prompt</h2>
-        <div class="image-prompt-section">
-            <h3>Enter Prompt for Image Generation</h3>
-            <textarea id="image-prompt-input" placeholder="Enter your prompt for image generation..." required rows="5" style="width: 100%; box-sizing: border-box; margin-bottom: 10px;"></textarea>
-            <button type="button" id="generate-image-from-prompt-btn">Generate Image</button>
-        </div>
-        <div class="generated-image-display" style="margin-top: 20px;">
-            <p id="image-generation-status"></p>
-        </div>
-    </div>
-
-    <div class="panel">
-        <h2>Image Generation from Script</h2>
-        <div class="script-generation-section">
-            <h3>Enter Script Manually</h3>
-            <form id="generate-images-form">
-                <textarea id="script-content" placeholder="Enter your full script here, with each line representing a scene..." required rows="10" style="width: 100%; box-sizing: border-box; margin-bottom: 10px;"></textarea>
-                <button type="button" id="generate-images-btn">Generate Images from this Script</button>
-            </form>
-        </div>
-    </div>
-
-    <div class="panel">
         <h2>Browser Login Setup</h2>
         <div class="browser-login-section">
             <h3>Persistent Browser Login</h3>
@@ -72,7 +29,6 @@
         </div>
     </div>
 
-    
 </div>
 
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>

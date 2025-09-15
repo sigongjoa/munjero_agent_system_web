@@ -114,6 +114,10 @@ def quiz_automation_page():
 def login_management_page():
     return render_template('login_management.html')
 
+@app.route('/chatgpt_automation')
+def chatgpt_automation_page():
+    return render_template('chatgpt_automation.html')
+
 
 # --- API Endpoints ---
 
