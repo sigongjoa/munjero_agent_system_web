@@ -1,47 +1,86 @@
+version: '3.8'
+
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: python src/app.py
+    volumes:
+      - .:/app
+      - /app/node_modules # Exclude node_modules from host mount if it exists in root
+      - data_volume:/app/data
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+    # ports:
+    #   - "5001:5001"
+
   dashboard:
     build:
       context: .
       dockerfile: Dockerfile.dashboard
+    command: python dashboard/dashboard_app.py
+    volumes:
+      - .:/app
+      - /app/node_modules # Exclude node_modules from host mount if it exists in root
+      - data_volume:/app/data
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
       - "5000:5000"
-    command: python dashboard/dashboard_app.py
     depends_on:
       - redis
-      - chatgpt_worker
-      - quiz_automation_worker
-      - typecast_worker
-  backend-api:
+      - websocket_server
+
+  puppeteer_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.puppeteer
+    command: node worker.js
+    volumes:
+      - ./puppeteer_worker/user_data:/app/puppeteer_worker/user_data
+      - ./puppeteer_worker/chatgpt_worker.js:/app/puppeteer_worker/chatgpt_worker.js
+      - ./puppeteer_worker/typecast_worker.js:/app/puppeteer_worker/typecast_worker.js
+      - ./puppeteer_worker/quiz_automation_worker.js:/app/puppeteer_worker/quiz_automation_worker.js
+      - ./puppeteer_worker/chatgpt_worker_logs.txt:/app/chatgpt_worker_logs.txt
+      - ./puppeteer_worker/typecast_worker_logs.txt:/app/typecast_worker_logs.txt
+      - ./puppeteer_worker/quiz_automation_worker_logs.txt:/app/quiz_automation_worker_logs.txt
+      - ./puppeteer_worker/puppeteer_worker_logs.txt:/app/puppeteer_worker/puppeteer_worker_logs.txt
+      - data_volume:/app/data
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+    shm_size: '2gb'
+
+  websocket_server:
     build:
       context: .
       dockerfile: Dockerfile.backend
+    command: python scripts/websocket_server.py
+    volumes:
+      - .:/app
+      - /app/node_modules # Exclude node_modules from host mount if it exists in root
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
-      - "5001:5000"
-    command: python src/app.py
+      - "8765:8765"
     depends_on:
       - redis
-  redis:
-    image: "redis:alpine"
-    ports:
-      - "6379:6379"
-  chatgpt_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.puppeteer
-    command: node chatgpt_worker.js
-    depends_on:
-      - redis
-  quiz_automation_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.puppeteer
-    command: node quiz_automation_worker.js
-    depends_on:
-      - redis
-  typecast_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.puppeteer
-    command: node typecast_worker.js
-    depends_on:
-      - redis
+
+volumes:
+  redis_data:
+  data_volume:

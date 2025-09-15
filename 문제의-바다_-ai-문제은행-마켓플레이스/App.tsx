@@ -34,6 +34,7 @@ import DeepDiveModal from './components/DeepDiveModal';
 import ChatGPTAutomation from './components/ChatGPTAutomation'; // New import
 import TypecastAutomation from './components/TypecastAutomation'; // New import
 import QuizAutomation from './components/QuizAutomation'; // New import
+import BrowserLogin from './components/BrowserLogin'; // New import
 
 
 // Main App Component
@@ -628,6 +629,8 @@ export default function App() {
         return <TypecastAutomation />;
       case 'quiz-automation': // New case
         return <QuizAutomation />;
+      case 'browser-login': // New case
+        return <BrowserLogin />;
       default:
         return <div>선택된 뷰가 없습니다.</div>;
     }

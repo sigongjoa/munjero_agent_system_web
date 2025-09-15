@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Login Management{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>Login Management</h1>
+    <div class="panel">
+        <h2>ChatGPT Login</h2>
+        <p>Click the button below to launch a browser window for manual login to ChatGPT.</p>
+        <button id="login-chatgpt">Login to ChatGPT</button>
+        <p id="chatgpt-status"></p>
+    </div>
+    <div class="panel">
+        <h2>Typecast Login</h2>
+        <p>Click the button below to launch a browser window for manual login to Typecast.</p>
+        <button id="login-typecast">Login to Typecast</button>
+        <p id="typecast-status"></p>
+    </div>
+</div>
+
+<script>
+document.getElementById('login-chatgpt').addEventListener('click', async () => {
+    const status = document.getElementById('chatgpt-status');
+    status.textContent = 'Requesting ChatGPT login...';
+    try {
+        const response = await fetch('/api/manual_login_setup', { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            status.textContent = `Task created for ChatGPT login. Task ID: ${data.task_id}`;
+        } else {
+            status.textContent = `Error: ${data.message}`;
+        }
+    } catch (error) {
+        status.textContent = `Error: ${error.message}`;
+    }
+});
+
+document.getElementById('login-typecast').addEventListener('click', async () => {
+    const status = document.getElementById('typecast-status');
+    status.textContent = 'Requesting Typecast login...';
+    try {
+        const response = await fetch('/api/manual_login_setup_typecast', { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            status.textContent = `Task created for Typecast login. Task ID: ${data.task_id}`;
+        } else {
+            status.textContent = `Error: ${data.message}`;
+        }
+    } catch (error) {
+        status.textContent = `Error: ${error.message}`;
+    }
+});
+</script>
+{% endblock %}

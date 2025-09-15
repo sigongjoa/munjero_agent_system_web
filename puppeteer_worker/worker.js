@@ -5,7 +5,7 @@ const fs = require('fs');
 const util = require('util');
 
 
-const logFile = fs.createWriteStream('/app/puppeteer_worker_logs.txt', { flags: 'a' });
+const logFile = fs.createWriteStream('./puppeteer_worker_logs.txt', { flags: 'a' });
 
 // Override console.log, console.warn, console.error
 const originalConsoleLog = console.log;
@@ -25,9 +25,10 @@ console.error = function(...args) {
 };
 
 // Custom logger for important messages
-function importantLog(...args) {    originalConsoleLog.apply(console, args); // Print important logs to stdout    logFile.write("[IMPORTANT] " + util.format.apply(null, args) + '\n');} // Custom logger for file-only messagesfunction fileOnlyLog(...args) {    logFile.write(util.format.apply(null, args) + '\n');}
+function importantLog(...args) {    originalConsoleLog.apply(console, args); // Print important logs to stdout    logFile.write("[IMPORTANT] " + util.format.apply(null, args) + '\n');} // Custom logger for file-only messagesfunction fileOnlyLog(...args) {
+    logFile.write(util.format.apply(null, args) + '\n');}
 
-const REDIS_HOST = process.env.REDIS_HOST || "localhost";
+const REDIS_HOST = process.env.REDIS_HOST || "redis";
 const REDIS_PORT = process.env.REDIS_PORT || 6379;
 const PUPPETEER_TASKS_LIST = "puppeteer_general_tasks_list"; // Specific Redis list for general Puppeteer tasks
 const path = require("path"); // Import path module
@@ -37,24 +38,14 @@ let page;
 let lastImageUrl = null; // Store the URL of the last generated image
 const PUPPETEER_RESPONSE_PREFIX = 'puppeteer_response:'; // Add this line at the top with other constants
 
-
-
-
-// IMPORTANT: Manual Login Process for ChatGPT
-// Scenario: "Launch browser for manual login -> Save cookies"
-// 1. Run Puppeteer Worker with headless: false (browser window will appear).
-// 2. Manually log in to ChatGPT (solve Cloudflare, enter credentials).
-// 3. After successful login, the Worker will automatically save cookies.json and localStorage.json.
-// 4. Subsequent runs will load these saved sessions, bypassing manual login.
-
-async function getBrowser() {
+async function getBrowser(profileName = 'default') { // Add profileName with a default value
     importantLog("[PUPPETEER] Entering getBrowser function.");
     if (!browser || !page) {
         importantLog("[PUPPETEER] Initializing new browser instance...");
         try {
             browser = await puppeteer.launch({
                 headless: false,   // ✅ GUI 모드
-                executablePath: '/usr/bin/google-chrome-stable', // 설치된 크롬 경로
+                executablePath: '/usr/bin/chromium-browser', // 설치된 크롬 경로
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -62,8 +53,11 @@ async function getBrowser() {
                     '--disable-blink-features=AutomationControlled',
                     '--disable-extensions',
                     '--no-first-run',
-                    '--user-data-dir=./user_data',
-                    '--profile-directory=Default'
+                    `--user-data-dir=./user_data/${profileName}`, // Use profileName here
+                    '--profile-directory=Default',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-zygote',
+                    '--disable-gpu'
                 ]
             });
             importantLog("[PUPPETEER] Browser launched successfully.");
@@ -108,7 +102,8 @@ async function getBrowser() {
 
 async function executeTask(task, redisClient) {
     importantLog(`[PUPPETEER] Entering executeTask for task type: ${task.type}`);
-    const page = await getBrowser();
+    const { profile_name } = task.payload; // Extract profile_name
+    const page = await getBrowser(profile_name); // Pass profile_name
 
     try {
         if (task.type === "healthcheck") {
@@ -130,11 +125,14 @@ async function executeTask(task, redisClient) {
                     importantLog("[PUPPETEER] Attempting to launch browser for healthcheck...");
                     browserInstance = await puppeteer.launch({
                         headless: true, // Use headless for healthcheck
-                        executablePath: '/usr/bin/google-chrome-stable',
+                        executablePath: '/usr/bin/chromium-browser',
                         args: [
                             '--no-sandbox',
                             '--disable-setuid-sandbox',
-                            '--disable-dev-shm-usage'
+                            '--disable-dev-shm-usage',
+                            '--disable-accelerated-2d-canvas',
+                            '--no-zygote',
+                            '--disable-gpu'
                         ]
                     });
                     pageInstance = await browserInstance.newPage();
@@ -157,10 +155,11 @@ async function executeTask(task, redisClient) {
             })();
             return;
         } else if (task.type === "dom_crawl") {
-            const { url, task_id } = task.payload;
+            const { url, task_id, profile_name } = task.payload; // Extract profile_name
             importantLog(`[PUPPETEER] Crawling DOM for URL: ${url} (Task ID: ${task_id})...`);
 
             try {
+                const page = await getBrowser(profile_name); // Pass profile_name
                 await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
                 importantLog(`[PUPPETEER] Page loaded. Waiting extra 5s for SPA render...`);
                 await new Promise(r => setTimeout(r, 5000));
@@ -206,6 +205,19 @@ async function executeTask(task, redisClient) {
                     JSON.stringify({ elements: [], error: errorDetails }),
                     { EX: 300 }
                 );
+            }
+        } else if (task.type === "browser_login") {
+            const { profile_name, task_id } = task.payload;
+            importantLog(`[PUPPETEER] Starting browser login for profile: ${profile_name} (Task ID: ${task_id})...`);
+            try {
+                const page = await getBrowser(profile_name);
+                await page.goto('about:blank', { waitUntil: 'domcontentloaded' }); // Open a blank page
+                importantLog(`[PUPPETEER] Browser launched for profile '${profile_name}'. User can now manually log in.`);
+                // Optionally, you can set a Redis key to indicate the browser is ready for manual login
+                await redisClient.set(`puppeteer_response:${task_id}`, JSON.stringify({ status: "success", message: "Browser ready for manual login." }), { EX: 300 });
+            } catch (error) {
+                importantLog(`[PUPPETEER] Error during browser login setup for profile ${profile_name}:`, error);
+                await redisClient.set(`puppeteer_response:${task_id}`, JSON.stringify({ status: "error", message: error.message }), { EX: 300 });
             }
         } else {
             importantLog(`[PUPPETEER] Unknown task type received: ${task.type}`);
@@ -272,7 +284,4 @@ async function main() {
     }
 }
 
-}
-
 main();
-        

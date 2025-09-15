@@ -24,7 +24,8 @@ export type ActiveView =
   'persona-test-report' |
   'exam-selection' |
   'exam-mode' |
-  'test-report';
+  'test-report' |
+  'browser-login';
 
 export enum ShortAnswerType {
     TEXT_INTERPRETATION = '사료(텍스트) 해석형',

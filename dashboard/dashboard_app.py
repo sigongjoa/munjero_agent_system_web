@@ -110,6 +110,10 @@ def rag_page():
 def quiz_automation_page():
     return render_template('quiz_automation.html')
 
+@app.route('/login_management')
+def login_management_page():
+    return render_template('login_management.html')
+
 
 # --- API Endpoints ---
 
@@ -237,9 +241,47 @@ def api_manual_login_setup():
         }
     }
 
-    redis_client.lpush(PUPPETEER_TASKS_LIST, json.dumps(task))
+    redis_client.lpush('puppeteer_chatgpt_tasks_list', json.dumps(task))
     print(f"Dashboard: Queued manual login setup task (Task ID: {task_id})", flush=True, file=sys.stderr)
     return jsonify({"message": "Manual login setup task queued", "task_id": task_id}), 202
+
+@app.route('/api/manual_login_setup_typecast', methods=['POST'])
+def api_manual_login_setup_typecast():
+    """
+    Queues a 'manual_login_setup_typecast' task for the Puppeteer Typecast Worker.
+    """
+    task_id = str(uuid.uuid4())
+    task = {
+        "type": "manual_login_setup_typecast",
+        "payload": {
+            "task_id": task_id
+        }
+    }
+
+    redis_client.lpush('puppeteer_typecast_tasks_list', json.dumps(task))
+    print(f"Dashboard: Queued manual login setup task for Typecast (Task ID: {task_id})", flush=True, file=sys.stderr)
+    return jsonify({"message": "Manual login setup task for Typecast queued", "task_id": task_id}), 202
+
+@app.route('/api/start_browser_login', methods=['POST'])
+def api_start_browser_login():
+    """
+    Queues a 'browser_login' task for the Puppeteer Worker to open a browser for manual login.
+    """
+    data = request.get_json()
+    profile_name = data.get('profile_name', 'default') # Default to 'default' if not provided
+
+    task_id = str(uuid.uuid4())
+    task = {
+        "type": "browser_login",
+        "payload": {
+            "profile_name": profile_name,
+            "task_id": task_id
+        }
+    }
+
+    redis_client.lpush(PUPPETEER_TASKS_LIST, json.dumps(task))
+    print(f"Dashboard: Queued browser login task for profile '{profile_name}' (Task ID: {task_id})", flush=True, file=sys.stderr)
+    return jsonify({"message": "Browser login task queued", "task_id": task_id}), 202
 
 @app.route('/api/crawl_dom', methods=['POST'])
 def api_crawl_dom():

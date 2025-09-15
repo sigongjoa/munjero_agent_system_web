@@ -37,14 +37,14 @@ let browserInstance;
 let pageInstance;
 let lastImageUrl = null; // Store the URL of the last generated image
 
-async function getBrowser() {
+async function getBrowser(profileName = 'default') {
     importantLog("[CHATGPT_WORKER] Entering getBrowser function.");
     if (!browserInstance || !pageInstance) {
         importantLog("[CHATGPT_WORKER] Initializing new browser instance...");
         try {
             browserInstance = await puppeteer.launch({
                 headless: false,
-                executablePath: '/usr/bin/google-chrome-stable',
+                executablePath: '/usr/bin/chromium-browser',
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -52,8 +52,11 @@ async function getBrowser() {
                     '--disable-blink-features=AutomationControlled',
                     '--disable-extensions',
                     '--no-first-run',
-                    '--user-data-dir=./user_data_chatgpt', // Separate user data dir for ChatGPT
-                    '--profile-directory=Default'
+                    `--user-data-dir=./user_data/${profileName}`, // Use profileName here
+                    '--profile-directory=Default',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-zygote',
+                    '--disable-gpu'
                 ]
             });
             importantLog("[CHATGPT_WORKER] Browser launched successfully.");
@@ -93,13 +96,16 @@ async function getBrowser() {
 
 async function executeTask(task, redisClient) {
     importantLog(`[CHATGPT_WORKER] Entering executeTask for task type: ${task.type}`);
-    const page = await getBrowser();
+    const { profile_name } = task.payload; // Extract profile_name
+    const page = await getBrowser(profile_name);
 
     try {
         if (task.type === "manual_login_setup") {
+            const { profile_name } = task.payload; // Extract profile_name
             importantLog("[CHATGPT_WORKER] Starting manual login setup...");
             importantLog("[CHATGPT_WORKER] Navigating to ChatGPT for manual login...");
             try {
+                const page = await getBrowser(profile_name); // Pass profile_name
                 await page.goto("https://chat.openai.com/", { waitUntil: 'domcontentloaded' });
                 importantLog("[CHATGPT_WORKER] ChatGPT page loaded for manual login. Waiting for selector...");
 

@@ -42,7 +42,7 @@ async function getBrowser() {
         try {
             browserInstance = await puppeteer.launch({
                 headless: false,
-                executablePath: '/usr/bin/google-chrome-stable',
+                executablePath: '/usr/bin/chromium-browser',
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -51,7 +51,10 @@ async function getBrowser() {
                     '--disable-extensions',
                     '--no-first-run',
                     '--user-data-dir=./user_data_quiz_automation', // Dedicated user data dir
-                    '--profile-directory=Default'
+                    '--profile-directory=Default',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-zygote',
+                    '--disable-gpu'
                 ]
             });
             importantLog("[QUIZ_AUTOMATION_WORKER] Browser launched successfully.");

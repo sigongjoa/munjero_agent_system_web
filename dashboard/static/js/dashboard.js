@@ -364,4 +364,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setTimeout(checkResult, pollInterval); // Initial call
     }
+
+    // --- Browser Login Setup ---
+    const startBrowserLoginBtn = document.getElementById('start-browser-login-btn');
+    const browserProfileNameInput = document.getElementById('browser-profile-name');
+    const browserLoginStatus = document.getElementById('browser-login-status');
+
+    if (startBrowserLoginBtn) {
+        startBrowserLoginBtn.addEventListener('click', async () => {
+            const profileName = browserProfileNameInput.value;
+            if (!profileName) {
+                browserLoginStatus.textContent = 'Please enter a profile name.';
+                return;
+            }
+
+            browserLoginStatus.textContent = 'Launching browser for manual login... Please wait.';
+            startBrowserLoginBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/start_browser_login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ profile_name: profileName }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    browserLoginStatus.textContent = `Browser launched for profile '${profileName}'. Please complete login in the new browser window. Task ID: ${data.task_id}`;
+                } else {
+                    browserLoginStatus.textContent = `Error starting browser login: ${data.error || 'Unknown error'}`;
+                }
+            } catch (error) {
+                console.error('Network error during browser login setup:', error);
+                browserLoginStatus.textContent = `Network error: ${error.message}`;
+            } finally {
+                startBrowserLoginBtn.disabled = false;
+            }
+        });
+    }
 });

@@ -34,14 +34,14 @@ function fileOnlyLog(...args) {
 let browserInstance;
 let pageInstance;
 
-async function getBrowser() {
+async function getBrowser(profileName = 'default') { // Add profileName with a default value
     importantLog("[TYPECAST_TTS] Entering getBrowser function for Typecast.");
     if (!browserInstance || !pageInstance) {
         importantLog("[TYPECAST_TTS] Initializing new browser instance for Typecast...");
         try {
             browserInstance = await puppeteer.launch({
                 headless: false,
-                executablePath: '/usr/bin/google-chrome-stable',
+                executablePath: '/usr/bin/chromium-browser',
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -49,8 +49,11 @@ async function getBrowser() {
                     '--disable-blink-features=AutomationControlled',
                     '--disable-extensions',
                     '--no-first-run',
-                    '--user-data-dir=./user_data_typecast', // Separate user data dir for Typecast
-                    '--profile-directory=Default'
+                    `--user-data-dir=./user_data/${profileName}`, // Use profileName here
+                    '--profile-directory=Default',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-zygote',
+                    '--disable-gpu'
                 ]
             });
             importantLog("[TYPECAST_TTS] Browser launched successfully for Typecast.");
@@ -259,7 +262,8 @@ async function generateTypecastTTS(page, textToConvert, filename, taskId, redisC
 
 async function executeTask(task, redisClient) {
     importantLog(`[TYPECAST_TTS] Entering executeTask for task type: ${task.type}`);
-    const page = await getBrowser();
+    const { profile_name } = task.payload; // Extract profile_name
+    const page = await getBrowser(profile_name);
 
     try {
         if (task.type === "generate_tts_typecast") {
