@@ -604,7 +604,7 @@ async def healthcheck():
         health_status["overall"] = "unhealthy"
 
     # Read Puppeteer worker logs and add to health_status
-    puppeteer_log_path = "/app/puppeteer_worker_logs.txt" # This path is relative to the Docker container's /app
+    puppeteer_log_path = "/app/puppeteer_worker/puppeteer_worker_logs.txt" # This path is relative to the Docker container's /app
     try:
         if os.path.exists(puppeteer_log_path):
             with open(puppeteer_log_path, 'r') as f:

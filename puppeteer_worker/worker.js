@@ -30,7 +30,7 @@ function importantLog(...args) {    originalConsoleLog.apply(console, args); // 
 
 const REDIS_HOST = process.env.REDIS_HOST || "redis";
 const REDIS_PORT = process.env.REDIS_PORT || 6379;
-const PUPPETEER_TASKS_LIST = "puppeteer_general_tasks_list"; // Specific Redis list for general Puppeteer tasks
+const PUPPETEER_TASKS_LIST = "puppeteer_general_tasks_list"; // Specific Redis list for general Puppeteer tasks // Specific Redis list for general Puppeteer tasks
 const path = require("path"); // Import path module
 const { URL } = require('url'); // Import URL module for cache-busting
 let browser;
@@ -63,6 +63,15 @@ async function getBrowser(profileName = 'default') { // Add profileName with a d
             importantLog("[PUPPETEER] Browser launched successfully.");
             page = await browser.newPage();
             importantLog("[PUPPETEER] New page created.");
+
+            // Navigate to a known domain to establish a valid page context before potential localStorage access
+            try {
+                await page.goto("https://www.google.com", { waitUntil: 'networkidle2' });
+                importantLog("[PUPPETEER] Navigated to google.com to establish a valid page context.");
+            } catch (e) {
+                importantLog(`[PUPPETEER] Could not navigate to google.com, but continuing. Error: ${e.message}`);
+            }
+
             await page.setViewport({ width: 1366, height: 768 }); // Standard desktop resolution
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.88 Safari/537.36'); // Desktop user agent
             // --- Enhanced Logging for Debugging ---
