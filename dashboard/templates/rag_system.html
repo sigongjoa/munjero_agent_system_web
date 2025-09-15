@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}RAG System{% endblock %}
+{% block content %}
+<style>
+    .rag-container {
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+        text-align: center;
+        color: #333;
+        margin-bottom: 30px;
+    }
+    form {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 40px;
+    }
+    input[type="file"] {
+        margin-bottom: 15px;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        width: 100%;
+        max-width: 400px;
+    }
+    input[type="submit"] {
+        background-color: #4CAF50;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: background-color 0.3s ease;
+    }
+    input[type="submit"]:hover {
+        background-color: #45a049;
+    }
+    .error {
+        color: red;
+        text-align: center;
+        margin-top: 20px;
+        font-weight: bold;
+    }
+    .chunks-container {
+        margin-top: 30px;
+        border-top: 1px solid #eee;
+        padding-top: 20px;
+    }
+    h2 {
+        text-align: center;
+        color: #555;
+        margin-bottom: 25px;
+    }
+    .problem-card, .passage-card, .chunk {
+        background-color: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .problem-card h3 {
+        color: #0056b3;
+        margin-top: 0;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #0056b3;
+        padding-bottom: 5px;
+    }
+    .problem-card p {
+        margin-bottom: 10px;
+        line-height: 1.6;
+    }
+    .problem-card ol {
+        list-style-type: decimal;
+        padding-left: 20px;
+    }
+    .passage-card {
+        background-color: #e9f7ef;
+        border-color: #c3e6cb;
+    }
+    .passage-card h4 {
+        color: #28a745;
+        margin-top: 0;
+        margin-bottom: 10px;
+    }
+    .passage-card pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        background-color: #f0fdf4;
+        border: 1px solid #d4edda;
+        padding: 15px;
+        border-radius: 5px;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 0.9em;
+    }
+</style>
+
+<div class="rag-container">
+    <h1>RAG System PDF Processor</h1>
+    <form id="pdf-upload-form" method="post" enctype="multipart/form-data">
+        <input type="file" name="pdf_file" accept=".pdf" required>
+        <input type="submit" value="Upload and Process">
+    </form>
+
+    <div id="error-container" class="error"></div>
+    <div id="chunks-container" class="chunks-container" style="display: none;">
+        <h2>Processed Content:</h2>
+        <div id="results"></div>
+    </div>
+
+    <div class="worker-actions" style="margin-top: 40px;">
+        <h2>Worker Actions</h2>
+        <div style="display: flex; justify-content: space-around; flex-wrap: wrap;">
+            <div style="margin: 10px;">
+                <input type="text" id="chatgpt-prompt" placeholder="Prompt for image generation" style="width: 250px; padding: 8px;">
+                <button id="trigger-chatgpt" class="action-button">Generate Image</button>
+            </div>
+            <div style="margin: 10px;">
+                <input type="text" id="typecast-text" placeholder="Text for TTS" style="width: 250px; padding: 8px;">
+                <input type="text" id="typecast-filename" placeholder="Filename for TTS" style="width: 150px; padding: 8px;">
+                <button id="trigger-typecast" class="action-button">Generate TTS</button>
+            </div>
+            <div style="margin: 10px;">
+                <select id="worker-type" style="padding: 8px;">
+                    <option value="chatgpt">ChatGPT Worker</option>
+                    <option value="typecast">Typecast Worker</option>
+                    <option value="general">General Worker</option>
+                </select>
+                <button id="trigger-healthcheck" class="action-button">Run Health Check</button>
+            </div>
+        </div>
+        <div id="worker-status-container" style="margin-top: 20px; text-align: center;"></div>
+    </div>
+</div>
+
+<script>
+document.getElementById('pdf-upload-form').addEventListener('submit', async function(event) {
+    event.preventDefault();
+
+    const form = event.target;
+    const formData = new FormData(form);
+    const errorContainer = document.getElementById('error-container');
+    const chunksContainer = document.getElementById('chunks-container');
+    const resultsContainer = document.getElementById('results');
+
+    errorContainer.textContent = '';
+    chunksContainer.style.display = 'none';
+    resultsContainer.innerHTML = '';
+
+    try {
+        const response = await fetch('http://localhost:5001/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const newChunks = doc.querySelector('.chunks-container');
+        const newError = doc.querySelector('.error');
+
+        if (newError && newError.textContent.trim()) {
+            errorContainer.textContent = newError.textContent;
+        } else if (newChunks) {
+            chunksContainer.style.display = 'block';
+            resultsContainer.innerHTML = newChunks.innerHTML;
+        } else {
+            errorContainer.textContent = 'An unknown error occurred.';
+        }
+
+    } catch (error) {
+        errorContainer.textContent = `An error occurred: ${error.message}`;
+    }
+});
+
+document.getElementById('trigger-chatgpt').addEventListener('click', async function() {
+    const prompt = document.getElementById('chatgpt-prompt').value;
+    if (!prompt) {
+        alert('Please enter a prompt for image generation.');
+        return;
+    }
+    const task_id = 'chatgpt-image-' + Date.now();
+    const response = await fetch('http://localhost:5001/api/trigger-chatgpt-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, task_id })
+    });
+    const result = await response.json();
+    updateWorkerStatus(`ChatGPT image generation task queued with task ID: ${result.task_id}`);
+});
+
+document.getElementById('trigger-typecast').addEventListener('click', async function() {
+    const text_to_convert = document.getElementById('typecast-text').value;
+    const filename = document.getElementById('typecast-filename').value;
+    if (!text_to_convert || !filename) {
+        alert('Please enter text and a filename for TTS generation.');
+        return;
+    }
+    const task_id = 'typecast-tts-' + Date.now();
+    const response = await fetch('http://localhost:5001/api/trigger-typecast-tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text_to_convert, filename, task_id })
+    });
+    const result = await response.json();
+    updateWorkerStatus(`Typecast TTS generation task queued with task ID: ${result.task_id}`);
+});
+
+document.getElementById('trigger-healthcheck').addEventListener('click', async function() {
+    const worker_type = document.getElementById('worker-type').value;
+    const task_id = 'healthcheck-' + worker_type + '-' + Date.now();
+    const response = await fetch('http://localhost:5001/api/healthcheck-worker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_type, task_id })
+    });
+    const result = await response.json();
+    updateWorkerStatus(`Health check for ${worker_type} worker queued with task ID: ${result.task_id}`);
+});
+
+function updateWorkerStatus(message) {
+    const statusContainer = document.getElementById('worker-status-container');
+    statusContainer.textContent = message;
+}
+</script>
+{% endblock %}

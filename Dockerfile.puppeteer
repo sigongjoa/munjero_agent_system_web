@@ -1,0 +1,10 @@
+FROM node:18-alpine
+
+WORKDIR /app/puppeteer_worker
+
+COPY puppeteer_worker/package*.json ./
+RUN npm install
+
+COPY puppeteer_worker/ ./
+
+CMD ["node", "worker.js"]

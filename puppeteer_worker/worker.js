@@ -272,5 +272,7 @@ async function main() {
     }
 }
 
+}
+
 main();
         

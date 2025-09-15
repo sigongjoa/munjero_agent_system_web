@@ -102,6 +102,14 @@ def dom_viewer_page():
 def typecast_tts_page():
     return render_template('typecast_tts.html')
 
+@app.route('/rag')
+def rag_page():
+    return render_template('rag_system.html')
+
+@app.route('/quiz_automation')
+def quiz_automation_page():
+    return render_template('quiz_automation.html')
+
 
 # --- API Endpoints ---
 

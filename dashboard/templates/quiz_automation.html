@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Quiz Automation{% endblock %}
+{% block content %}
+<style>
+    .quiz-automation-container {
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+        text-align: center;
+        color: #333;
+        margin-bottom: 30px;
+    }
+    .action-button {
+        background-color: #007bff;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: background-color 0.3s ease;
+    }
+    .action-button:hover {
+        background-color: #0056b3;
+    }
+</style>
+
+<div class="quiz-automation-container">
+    <h1>Quiz Automation</h1>
+    <div style="margin: 10px; border: 1px solid #ccc; padding: 10px; border-radius: 5px;">
+        <h3>Quiz Automation</h3>
+        <textarea id="quiz-data" placeholder="Generated Quiz Data (JSON)" style="width: 100%; height: 100px;"></textarea>
+        <textarea id="quiz-user-input" placeholder="User Input (JSON)" style="width: 100%; height: 50px;"></textarea>
+        <input type="text" id="quiz-frontend-url" placeholder="Frontend URL" style="width: 100%; padding: 8px;">
+        <button id="trigger-quiz" class="action-button">Generate Quiz Shorts</button>
+    </div>
+    <div id="worker-status-container" style="margin-top: 20px; text-align: center;"></div>
+</div>
+
+<script>
+document.getElementById('trigger-quiz').addEventListener('click', async function() {
+    const generatedQuizData = JSON.parse(document.getElementById('quiz-data').value);
+    const userInput = JSON.parse(document.getElementById('quiz-user-input').value);
+    const frontend_url = document.getElementById('quiz-frontend-url').value;
+
+    if (!generatedQuizData || !userInput || !frontend_url) {
+        alert('Please provide all the required data for quiz automation.');
+        return;
+    }
+
+    const task_id = 'quiz-automation-' + Date.now();
+    const response = await fetch('http://localhost:5001/api/trigger-quiz-automation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            generatedQuizData,
+            userInput,
+            task_id,
+            frontend_url
+        })
+    });
+    const result = await response.json();
+    updateWorkerStatus(`Quiz automation task queued with task ID: ${result.task_id}`);
+});
+
+function updateWorkerStatus(message) {
+    const statusContainer = document.getElementById('worker-status-container');
+    statusContainer.textContent = message;
+}
+</script>
+{% endblock %}

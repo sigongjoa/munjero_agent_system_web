@@ -496,7 +496,7 @@ async function executeTask(task, redisClient) {
     }
 }
 
-const REDIS_HOST = process.env.REDIS_HOST || "localhost";
+const REDIS_HOST = process.env.REDIS_HOST || "redis";
 const REDIS_PORT = process.env.REDIS_PORT || 6379;
 const PUPPETEER_TASKS_LIST = "puppeteer_chatgpt_tasks_list";
 

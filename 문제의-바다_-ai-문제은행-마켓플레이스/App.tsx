@@ -31,6 +31,9 @@ import ExamSelection from './components/ExamSelection';
 import { getMockQuestions } from './services/mockExamData';
 import TakeQuizModal from './components/TakeQuizModal';
 import DeepDiveModal from './components/DeepDiveModal';
+import ChatGPTAutomation from './components/ChatGPTAutomation'; // New import
+import TypecastAutomation from './components/TypecastAutomation'; // New import
+import QuizAutomation from './components/QuizAutomation'; // New import
 
 
 // Main App Component
@@ -619,6 +622,12 @@ export default function App() {
         return <SubjectEthics />;
       case 'subject-math':
         return <SubjectMath />;
+      case 'chatgpt-automation': // New case
+        return <ChatGPTAutomation />;
+      case 'typecast-automation': // New case
+        return <TypecastAutomation />;
+      case 'quiz-automation': // New case
+        return <QuizAutomation />;
       default:
         return <div>선택된 뷰가 없습니다.</div>;
     }

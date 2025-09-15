@@ -16,6 +16,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView }) => {
   const [isAiCreateOpen, setIsAiCreateOpen] = useState(true);
   const [isCurriculumOpen, setIsCurriculumOpen] = useState(false);
+  const [isAutomationOpen, setIsAutomationOpen] = useState(false); // New state
 
   const curriculumSubjects = [
     { id: 'subject-korean', label: '국어' },
@@ -38,6 +39,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView }) => {
     { id: 'my-page', label: '마이페이지', icon: UserCircleIcon },
     { id: 'knowledge-base', label: '문제 유형 분석', icon: BookOpenIcon },
     { id: 'good-question-guide', label: '좋은 문제란?', icon: ClipboardListIcon },
+    { id: 'automation', label: '자동화 도구', icon: BrainCircuitIcon, children: [ // Using BrainCircuitIcon for now
+        { id: 'chatgpt-automation', label: 'ChatGPT 이미지' },
+        { id: 'typecast-automation', label: 'Typecast TTS' },
+        { id: 'quiz-automation', label: '퀴즈 자동화' },
+    ]},
     { id: 'subjects', label: '고교 교과과목', icon: LayoutDashboardIcon, children: curriculumSubjects },
   ];
   
@@ -115,6 +121,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView }) => {
                                 setIsAiCreateOpen(!isAiCreateOpen);
                             } else if (item.id === 'subjects') {
                                 setIsCurriculumOpen(!isCurriculumOpen);
+                            } else if (item.id === 'automation') { // New handler
+                                setIsAutomationOpen(!isAutomationOpen);
                             }
                         } else {
                             setActiveView(item.id as ActiveView);
@@ -178,6 +186,24 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView }) => {
                         </ul>
                    )}
                    {(item.id === 'subjects' && isCurriculumOpen) && (
+                        <ul className="mt-2 pl-5 space-y-1 border-l-2 border-slate-200 ml-3">
+                            {item.children?.map(child => (
+                                <li key={child.id}>
+                                    <button
+                                        onClick={() => setActiveView(child.id as ActiveView)}
+                                        className={`w-full text-left py-1.5 px-2 text-sm font-medium rounded-md transition-colors ${
+                                            activeView === child.id
+                                            ? 'text-primary-700 font-bold'
+                                            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        {child.label}
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                   )}
+                   {(item.id === 'automation' && isAutomationOpen) && ( // New rendering logic
                         <ul className="mt-2 pl-5 space-y-1 border-l-2 border-slate-200 ml-3">
                             {item.children?.map(child => (
                                 <li key={child.id}>

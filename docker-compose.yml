@@ -1,77 +1,47 @@
-version: '3.8'
 services:
-  redis:
-    image: 'redis:7-alpine'
-    ports:
-      - '6380:6379'
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-
-  websocket_server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - '8765:8765'
-    depends_on:
-      - redis
-    environment:
-      - REDIS_HOST=redis
-      - WS_PORT=8765
-    command: bash -c "python /app/scripts/check_port.py 8765 WS_PORT 8765 && python /app/scripts/websocket_server.py"
-    volumes:
-      - ./scripts:/app/scripts
-      - ./requirements.txt:/app/requirements.txt
-
   dashboard:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dashboard
     ports:
-      - '5000:5000'
+      - "5000:5000"
+    command: python dashboard/dashboard_app.py
     depends_on:
       - redis
-    environment:
-      - REDIS_HOST=redis
-      - DASHBOARD_PORT=5000
-    command: bash -c "python /app/scripts/check_port.py 5000 DASHBOARD_PORT 5000 && python /app/dashboard/dashboard_app.py"
-    volumes:
-      - ./dashboard:/app/dashboard
-      - ./scripts:/app/scripts
-      - ./requirements.txt:/app/requirements.txt
-
-  agent:
+      - chatgpt_worker
+      - quiz_automation_worker
+      - typecast_worker
+  backend-api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.backend
+    ports:
+      - "5001:5000"
+    command: python src/app.py
     depends_on:
       - redis
-    environment:
-      - REDIS_HOST=redis
-    command: bash -c "python /app/scripts/check_port.py 5000 AGENT_PORT 5000 && python /app/scripts/agent_app.py"
-    volumes:
-      - ./scripts:/app/scripts
-      - ./requirements.txt:/app/requirements.txt
-
-  puppeteer-worker:
+  redis:
+    image: "redis:alpine"
+    ports:
+      - "6379:6379"
+  chatgpt_worker:
     build:
-      context: ./puppeteer_worker
+      context: .
+      dockerfile: Dockerfile.puppeteer
+    command: node chatgpt_worker.js
     depends_on:
       - redis
-    environment:
-      - REDIS_HOST=redis
-      - SESSION_COOKIE=${SESSION_COOKIE}
-      - DISPLAY=${DISPLAY}
-    # It's recommended to give Puppeteer a larger shared memory size
-    shm_size: '8gb'
-    mem_limit: 6g
-    volumes:
-      - ./puppeteer_worker:/app
-      - /app/node_modules
-      - /mnt/wslg/.X11-unix:/tmp/.X11-unix
-    tty: true
-    user: root
-
-volumes:
-  redis_data:
+  quiz_automation_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.puppeteer
+    command: node quiz_automation_worker.js
+    depends_on:
+      - redis
+  typecast_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.puppeteer
+    command: node typecast_worker.js
+    depends_on:
+      - redis
