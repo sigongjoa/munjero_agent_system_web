@@ -12,7 +12,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    command: python src/app.py
+    command: python scripts/agent_app.py
     volumes:
       - .:/app
       - /app/node_modules # Exclude node_modules from host mount if it exists in root
@@ -49,7 +49,7 @@ services:
       dockerfile: Dockerfile.puppeteer
     command: node worker.js
     volumes:
-      - ./puppeteer_worker/user_data:/app/puppeteer_worker/user_data
+      
       - ./puppeteer_worker/chatgpt_worker.js:/app/puppeteer_worker/chatgpt_worker.js
       - ./puppeteer_worker/typecast_worker.js:/app/puppeteer_worker/typecast_worker.js
       - ./puppeteer_worker/quiz_automation_worker.js:/app/puppeteer_worker/quiz_automation_worker.js
@@ -58,9 +58,13 @@ services:
       - ./puppeteer_worker/quiz_automation_worker_logs.txt:/app/quiz_automation_worker_logs.txt
       - ./puppeteer_worker/puppeteer_worker_logs.txt:/app/puppeteer_worker/puppeteer_worker_logs.txt
       - data_volume:/app/data
+      - puppeteer_worker_user_data:/app/puppeteer_worker/user_data # Persistent volume for puppeteer-cluster user data
+      - /tmp/.X11-unix:/tmp/.X11-unix # For X forwarding
+      - /home/zesky/.Xauthority:/root/.Xauthority:rw # For X forwarding authentication
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - DISPLAY=${DISPLAY} # For X forwarding
     depends_on:
       - redis
     shm_size: '2gb'
@@ -84,3 +88,4 @@ services:
 volumes:
   redis_data:
   data_volume:
+  puppeteer_worker_user_data:

@@ -50,7 +50,7 @@ WEBSOCKET_SERVER_URL = "ws://websocket_server:8765" # Use service name for Docke
 
 # --- Redis Keys ---
 AGENT_TASKS_LIST = 'agent_tasks'             # Tasks for the agent to perform (e.g., generate script)
-PUPPETEER_TASKS_LIST = 'puppeteer_tasks_list' # Tasks for the Puppeteer worker
+PUPPETEER_TASKS_LIST = 'puppeteer_general_tasks_list' # Tasks for the Puppeteer worker
 EXTENSION_RESPONSES_LIST = 'extension_responses_list' # Raw responses from the extension
 EXTENSION_STATUS_KEY = 'extension_connection_status'
 LAST_RECEIVED_DOM_KEY = 'last_received_dom'

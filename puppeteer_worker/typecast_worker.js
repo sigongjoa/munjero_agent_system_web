@@ -98,6 +98,7 @@ async function generateTypecastTTS(page, textToConvert, filename, taskId, redisC
         importantLog("[TYPECAST_TTS] Navigating to Typecast editor page...");
         await page.goto("https://app.typecast.ai/ko/editor/68c3954a7c0b34aac16ca8e7", { waitUntil: 'domcontentloaded', timeout: 60000 });
         importantLog("[TYPECAST_TTS] Navigated to Typecast editor page.");
+        await new Promise(r => setTimeout(r, 3000)); // Add a 3-second delay
 
         importantLog("[TYPECAST_TTS] Checking login status...");
         const isLoggedIn = await page.evaluate(() => {
@@ -126,6 +127,7 @@ async function generateTypecastTTS(page, textToConvert, filename, taskId, redisC
             }
         }, scriptAreaSelector, textToConvert);
         importantLog("[TYPECAST_TTS] Text input into script area.");
+        await new Promise(r => setTimeout(r, 2000)); // Add a 2-second delay
 
         const downloadButtonSelector = '#download-button';
         importantLog(`[TYPECAST_TTS] Waiting for download button selector: ${downloadButtonSelector}`);
@@ -133,6 +135,7 @@ async function generateTypecastTTS(page, textToConvert, filename, taskId, redisC
         importantLog("[TYPECAST_TTS] Download button found. Clicking...");
         await page.click(downloadButtonSelector);
         importantLog("[TYPECAST_TTS] Clicked download button.");
+        await new Promise(r => setTimeout(r, 2000)); // Add a 2-second delay
 
         importantLog("[TYPECAST_TTS] Waiting for '오디오 파일' option to appear...");
         await page.waitForSelector('li.editor-popup-menu-item.t-body2', { visible: true });
@@ -148,6 +151,7 @@ async function generateTypecastTTS(page, textToConvert, filename, taskId, redisC
             return false;
         });
         importantLog("[TYPECAST_TTS] Selected '오디오 파일' option.");
+        await new Promise(r => setTimeout(r, 2000)); // Add a 2-second delay
 
         const downloadSettingsModalSelector = 'div.custom-modal.col-xl-4';
         importantLog(`[TYPECAST_TTS] Waiting for download settings modal: ${downloadSettingsModalSelector}`);
@@ -167,6 +171,7 @@ async function generateTypecastTTS(page, textToConvert, filename, taskId, redisC
             }
         }, filenameInputSelector, filename);
         importantLog(`[TYPECAST_TTS] Set filename to: "${filename}"`);
+        await new Promise(r => setTimeout(r, 1000)); // Add a 1-second delay
 
         importantLog("[TYPECAST_TTS] Selecting MP3 format...");
         await page.evaluate(() => {
@@ -180,6 +185,7 @@ async function generateTypecastTTS(page, textToConvert, filename, taskId, redisC
             return false;
         });
         importantLog("[TYPECAST_TTS] Selected MP3 format.");
+        await new Promise(r => setTimeout(r, 1000)); // Add a 1-second delay
 
         importantLog("[TYPECAST_TTS] Selecting '문장별로 나누기' option...");
         await page.evaluate(() => {
@@ -193,6 +199,7 @@ async function generateTypecastTTS(page, textToConvert, filename, taskId, redisC
             return false;
         });
         importantLog("[TYPECAST_TTS] Selected '문장별로 나누기'.");
+        await new Promise(r => setTimeout(r, 1000)); // Add a 1-second delay
 
         importantLog("[TYPECAST_TTS] Selecting '높음' quality...");
         await page.evaluate(() => {
@@ -206,6 +213,7 @@ async function generateTypecastTTS(page, textToConvert, filename, taskId, redisC
             return false;
         });
         importantLog("[TYPECAST_TTS] Selected '높음' quality.");
+        await new Promise(r => setTimeout(r, 1000)); // Add a 1-second delay
 
         const confirmDownloadButtonSelector = 'button.t-button.confirm.t-button.medium.small.primary';
         importantLog(`[TYPECAST_TTS] Waiting for confirm download button: ${confirmDownloadButtonSelector}`);
@@ -213,6 +221,7 @@ async function generateTypecastTTS(page, textToConvert, filename, taskId, redisC
         importantLog("[TYPECAST_TTS] Confirm download button found. Clicking...");
         await page.click(confirmDownloadButtonSelector);
         importantLog("[TYPECAST_TTS] Clicked final confirm download button.");
+        await new Promise(r => setTimeout(r, 3000)); // Add a 3-second delay
 
         importantLog("[TYPECAST_TTS] Setting up download behavior...");
         const client = await page.target().createCDPSession();
