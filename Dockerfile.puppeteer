@@ -12,6 +12,6 @@ RUN npm install
 
 COPY puppeteer_worker/debug_x11.sh ./
 RUN chmod +x debug_x11.sh
-COPY puppeteer_worker/ ./
+
 
 CMD ["node", "worker.js"]

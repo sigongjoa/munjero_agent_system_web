@@ -46,3 +46,6 @@ puppeteer_worker/puppeteer_worker_logs.txt
 # Typecast Session Files
 puppeteer_worker/typecast_cookies.json
 puppeteer_worker/typecast_localStorage.json
+
+# Puppeteer User Data
+puppeteer_worker/user_data/
