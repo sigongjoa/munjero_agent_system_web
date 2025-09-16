@@ -1,6 +1,9 @@
 FROM node:18-alpine
 
-RUN apk add --no-cache chromium mesa-dri-gallium libexif udev ttf-freefont xorg-server xvfb dbus nss freetype harfbuzz icu-libs fontconfig libjpeg-turbo libpng libwebp libxcomposite libxdamage libxext libxfixes libxrandr libxrender libxscrnsaver libxshmfence libxxf86vm alsa-lib cairo cups-libs gdk-pixbuf glib gtk+3.0 pango libgcc libstdc++ libuuid zlib xdpyinfo
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+RUN apk add --no-cache chromium mesa-dri-gallium libexif udev ttf-freefont xorg-server xvfb xvfb-run nss freetype harfbuzz icu-libs fontconfig libjpeg-turbo libpng libwebp libxcomposite libxdamage libxext libxfixes libxrandr libxrender libxscrnsaver libxshmfence libxxf86vm alsa-lib cairo cups-libs gdk-pixbuf glib gtk+3.0 pango libgcc libstdc++ libuuid zlib xdpyinfo tini dbus dbus-x11
 
 # Set environment variables for X11
 ENV DISPLAY=:0.0
@@ -13,5 +16,12 @@ RUN npm install
 COPY puppeteer_worker/debug_x11.sh ./
 RUN chmod +x debug_x11.sh
 
+COPY puppeteer_worker/worker.js .
+COPY puppeteer_worker/typecast_worker.js .
+COPY puppeteer_worker/chatgpt_worker.js .
+COPY puppeteer_worker/quiz_automation_worker.js .
+COPY puppeteer_worker/start_puppeteer.sh ./
+RUN chmod +x start_puppeteer.sh
 
-CMD ["node", "worker.js"]
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["./start_puppeteer.sh"]

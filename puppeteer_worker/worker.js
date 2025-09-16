@@ -97,7 +97,7 @@ async function executeTask({ page, data: task }, redisClient) { // Modified to a
 
                 const elements = await page.evaluate(() => {
                     const all = [];
-                    document.querySelectorAll("*").forEach((el) => {
+                    document.querySelectorAll("*" ).forEach((el) => {
                         try {
                             all.push({
                                 tag: el.tagName.toLowerCase(),
@@ -141,7 +141,7 @@ async function executeTask({ page, data: task }, redisClient) { // Modified to a
             const { profile_name, task_id } = task.payload;
             importantLog(`[PUPPETEER] Starting browser login for profile: ${profile_name} (Task ID: ${task_id})...`);
             try {
-                
+
                 await page.goto('about:blank', { waitUntil: 'domcontentloaded' }); // Open a blank page
                 importantLog(`[PUPPETEER] Browser launched for profile '${profile_name}'. User can now manually log in.`);
                 // Optionally, you can set a Redis key to indicate the browser is ready for manual login
@@ -150,6 +150,10 @@ async function executeTask({ page, data: task }, redisClient) { // Modified to a
                 importantLog(`[PUPPETEER] Error during browser login setup for profile ${profile_name}:`, error);
                 await redisClient.set(`puppeteer_response:${task_id}`, JSON.stringify({ status: "error", message: error.message }), { EX: 300 });
             }
+        } else if (task.type === "open_blank_page") {
+            importantLog(`[PUPPETEER] Opening blank page...`);
+            await page.goto('about:blank', { waitUntil: 'domcontentloaded' });
+            importantLog(`[PUPPETEER] Blank page opened. Closing browser...`);
         } else if (task.type === "manual_login_setup_typecast" || task.type === "generate_tts_typecast") {
             // Dispatch to Typecast worker
             await executeTypecastTask(task, redisClient);
@@ -193,17 +197,25 @@ function checkDataDir() {
 
 async function main() {
     importantLog("[WORKER] Starting Puppeteer worker...");
-    // Run X11 debug script (commented out for now)
-    /*
+    // D-Bus 데몬을 시작하고 환경 변수를 설정합니다.
+    try {
+        const { execSync } = require('child_process');
+        const dbusSession = execSync('dbus-daemon --session --fork', { encoding: 'utf8' });
+        process.env.DBUS_SESSION_BUS_ADDRESS = dbusSession;
+        importantLog("[WORKER] D-Bus daemon started successfully.");
+    } catch (error) {
+        importantLog("[WORKER] Error starting D-Bus daemon:", error.message);
+    }
+
+    // Run X11 debug script
     try {
         const { execSync } = require('child_process');
         importantLog("[WORKER] Running X11 debug script...");
         const debugOutput = execSync('sh /app/puppeteer_worker/debug_x11.sh', { encoding: 'utf8' });
-        importantLog(debugOutput);
+        fileOnlyLog(debugOutput);
     } catch (error) {
         importantLog("[WORKER] Error running X11 debug script:", error.message);
     }
-    */
     checkDataDir(); // Call the check here
 
     const redisClient = createClient({ url: `redis://${REDIS_HOST}:${REDIS_PORT}` });
@@ -216,22 +228,37 @@ async function main() {
         maxConcurrency: 2, // Start with 2 concurrent browser instances
         puppeteerOptions: {
             headless: false, // Always non-headless for browser_login tasks
-            executablePath: '/usr/bin/chromium-browser',
+            executablePath: '/usr/bin/chromium',
             dumpio: true, // Dump browser process stdout and stderr to console
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-gpu-compositing',
+                '--disable-features=Dbus',
+                '--disable-features=UseSkiaRenderer',
+                '--disable-features=VizDisplayCompositor',
+                '--disable-web-security',
+                '--disable-xss-auditor',
                 '--disable-blink-features=AutomationControlled',
                 '--disable-extensions',
                 '--no-first-run',
                 '--profile-directory=Default',
                 '--disable-accelerated-2d-canvas',
                 '--no-zygote',
-                '--disable-gpu'
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--no-pings',
+                '--password-store=basic',
+                '--use-fake-ui-for-media-stream',
+                '--use-mock-keychain',
+                '--disable-features=Vaapi',
+                '--disable-features=WebRtcHwEncoding'
             ]
         },
-                userDataDir: './user_data/cluster_profile_%p', // Unique user data dir for each browser instance, %p is replaced by workerId
+        userDataDir: './user_data/cluster_profile_%p', // Unique user data dir for each browser instance, %p is replaced by workerId
         retryLimit: 1,
         skipDuplicateUrls: false,
         timeout: 300000, // 5 minutes
@@ -244,7 +271,7 @@ async function main() {
         importantLog("[WORKER] Performing initial browser launch test...");
         const testBrowser = await puppeteer.launch({
             headless: true, // Use headless for this test
-            executablePath: '/usr/bin/chromium-browser',
+            executablePath: '/usr/bin/chromium',
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',

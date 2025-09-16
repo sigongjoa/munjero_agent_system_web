@@ -50,6 +50,7 @@ services:
     command: node worker.js
     volumes:
       
+      - ./puppeteer_worker/worker.js:/app/puppeteer_worker/worker.js
       - ./puppeteer_worker/chatgpt_worker.js:/app/puppeteer_worker/chatgpt_worker.js
       - ./puppeteer_worker/typecast_worker.js:/app/puppeteer_worker/typecast_worker.js
       - ./puppeteer_worker/quiz_automation_worker.js:/app/puppeteer_worker/quiz_automation_worker.js
