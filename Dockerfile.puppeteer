@@ -1,24 +1,28 @@
-FROM node:18-alpine
+FROM ghcr.io/puppeteer/puppeteer:21.7.0
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+# Skip downloading Chromium, as it's provided by the base image
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
-RUN apk add --no-cache chromium mesa-dri-gallium libexif udev ttf-freefont xorg-server xvfb xvfb-run nss freetype harfbuzz icu-libs fontconfig libjpeg-turbo libpng libwebp libxcomposite libxdamage libxext libxfixes libxrandr libxrender libxscrnsaver libxshmfence libxxf86vm alsa-lib cairo cups-libs gdk-pixbuf glib gtk+3.0 pango libgcc libstdc++ libuuid zlib xdpyinfo tini dbus dbus-x11
-
-# Set environment variables for X11
+# Set environment variables for X11 (if needed, though the base image might handle this)
 ENV DISPLAY=:0.0
 
-WORKDIR /app/puppeteer_worker
+USER root
+RUN mkdir -p /home/pptruser/app && chown -R pptruser:pptruser /home/pptruser/app
+USER pptruser
+WORKDIR /home/pptruser/app
 
 COPY puppeteer_worker/package*.json ./
 RUN npm install
 
-COPY puppeteer_worker/debug_x11.sh ./
-RUN chmod +x debug_x11.sh
+COPY puppeteer_worker/debug_x11.sh ./puppeteer_worker/
+USER root
+RUN chown pptruser:pptruser ./puppeteer_worker/debug_x11.sh
+USER pptruser
+RUN chmod +x ./puppeteer_worker/debug_x11.sh
 
-COPY puppeteer_worker/worker.js .
-COPY puppeteer_worker/typecast_worker.js .
-COPY puppeteer_worker/chatgpt_worker.js .
-COPY puppeteer_worker/quiz_automation_worker.js .
+COPY puppeteer_worker/worker.js ./puppeteer_worker/
+COPY puppeteer_worker/typecast_worker.js ./puppeteer_worker/
+COPY puppeteer_worker/chatgpt_worker.js ./puppeteer_worker/
+COPY puppeteer_worker/quiz_automation_worker.js ./puppeteer_worker/
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "worker.js"]
+CMD ["node", "./puppeteer_worker/worker.js"]

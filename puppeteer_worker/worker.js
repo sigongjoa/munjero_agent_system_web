@@ -212,12 +212,14 @@ async function main() {
         const testBrowser = await puppeteer.launch({
             headless: false,
             executablePath: '/usr/bin/chromium',
+            protocolTimeout: 60000, // Increase timeout to 60 seconds
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
             ]
         });
         const testPage = await testBrowser.newPage();
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Add a 1-second delay
         await testPage.goto('about:blank');
         await testBrowser.close();
         importantLog("[WORKER] Initial browser launch test successful.");
