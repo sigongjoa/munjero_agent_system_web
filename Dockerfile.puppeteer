@@ -20,8 +20,5 @@ COPY puppeteer_worker/worker.js .
 COPY puppeteer_worker/typecast_worker.js .
 COPY puppeteer_worker/chatgpt_worker.js .
 COPY puppeteer_worker/quiz_automation_worker.js .
-COPY puppeteer_worker/start_puppeteer.sh ./
-RUN chmod +x start_puppeteer.sh
-
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["./start_puppeteer.sh"]
+CMD ["node", "worker.js"]

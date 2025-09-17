@@ -1,6 +1,6 @@
 const { createClient } = require("redis");
 const { Cluster } = require('puppeteer-cluster');
-const puppeteer = require("puppeteer"); // Re-add puppeteer for initial launch test
+const puppeteer = require("puppeteer-core"); // Re-add puppeteer for initial launch test
 const https = require("https");
 const fs = require('fs');
 const util = require('util');
@@ -18,10 +18,12 @@ console.log = function(...args) {
 };
 
 console.warn = function(...args) {
+    originalConsoleWarn.apply(console, args); // Log to stderr
     logFile.write(util.format.apply(null, args) + '\n');
 };
 
 console.error = function(...args) {
+    originalConsoleError.apply(console, args);
     logFile.write(util.format.apply(null, args) + '\n');
 };
 
@@ -197,25 +199,6 @@ function checkDataDir() {
 
 async function main() {
     importantLog("[WORKER] Starting Puppeteer worker...");
-    // D-Bus 데몬을 시작하고 환경 변수를 설정합니다.
-    try {
-        const { execSync } = require('child_process');
-        const dbusSession = execSync('dbus-daemon --session --fork', { encoding: 'utf8' });
-        process.env.DBUS_SESSION_BUS_ADDRESS = dbusSession;
-        importantLog("[WORKER] D-Bus daemon started successfully.");
-    } catch (error) {
-        importantLog("[WORKER] Error starting D-Bus daemon:", error.message);
-    }
-
-    // Run X11 debug script
-    try {
-        const { execSync } = require('child_process');
-        importantLog("[WORKER] Running X11 debug script...");
-        const debugOutput = execSync('sh /app/puppeteer_worker/debug_x11.sh', { encoding: 'utf8' });
-        fileOnlyLog(debugOutput);
-    } catch (error) {
-        importantLog("[WORKER] Error running X11 debug script:", error.message);
-    }
     checkDataDir(); // Call the check here
 
     const redisClient = createClient({ url: `redis://${REDIS_HOST}:${REDIS_PORT}` });
@@ -223,60 +206,15 @@ async function main() {
     await redisClient.connect();
     importantLog("[REDIS] Connected to Redis successfully.");
 
-    const cluster = await Cluster.launch({
-        concurrency: Cluster.CONCURRENCY_BROWSER,
-        maxConcurrency: 2, // Start with 2 concurrent browser instances
-        puppeteerOptions: {
-            headless: false, // Always non-headless for browser_login tasks
-            executablePath: '/usr/bin/chromium',
-            dumpio: true, // Dump browser process stdout and stderr to console
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--disable-software-rasterizer',
-                '--disable-gpu-compositing',
-                '--disable-features=Dbus',
-                '--disable-features=UseSkiaRenderer',
-                '--disable-features=VizDisplayCompositor',
-                '--disable-web-security',
-                '--disable-xss-auditor',
-                '--disable-blink-features=AutomationControlled',
-                '--disable-extensions',
-                '--no-first-run',
-                '--profile-directory=Default',
-                '--disable-accelerated-2d-canvas',
-                '--no-zygote',
-                '--mute-audio',
-                '--no-default-browser-check',
-                '--no-pings',
-                '--password-store=basic',
-                '--use-fake-ui-for-media-stream',
-                '--use-mock-keychain',
-                '--disable-features=Vaapi',
-                '--disable-features=WebRtcHwEncoding'
-            ]
-        },
-        userDataDir: './user_data/cluster_profile_%p', // Unique user data dir for each browser instance, %p is replaced by workerId
-        retryLimit: 1,
-        skipDuplicateUrls: false,
-        timeout: 300000, // 5 minutes
-        monitor: true,
-        workerCreationDelay: 1000,
-    });
-
     // Perform a quick browser launch test
     try {
         importantLog("[WORKER] Performing initial browser launch test...");
         const testBrowser = await puppeteer.launch({
-            headless: true, // Use headless for this test
+            headless: false,
             executablePath: '/usr/bin/chromium',
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu'
             ]
         });
         const testPage = await testBrowser.newPage();
@@ -285,9 +223,28 @@ async function main() {
         importantLog("[WORKER] Initial browser launch test successful.");
     } catch (error) {
         importantLog("[WORKER] Initial browser launch test FAILED:", error.message);
-        // Optionally, exit the process if the initial test fails
-        // process.exit(1);
+        // Exit the process if the initial test fails, as the cluster will likely fail too.
+        process.exit(1);
     }
+
+    const cluster = await Cluster.launch({
+        concurrency: Cluster.CONCURRENCY_BROWSER,
+        maxConcurrency: 2,
+        puppeteerOptions: {
+            headless: false,
+            executablePath: '/usr/bin/chromium',
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+            ]
+        },
+        userDataDir: './user_data/cluster_profile_%p',
+        retryLimit: 1,
+        skipDuplicateUrls: false,
+        timeout: 300000, // 5 minutes
+        monitor: true,
+        workerCreationDelay: 1000,
+    });
 
     // Register the task handler
     await cluster.task(async ({ page, data: task }) => {
@@ -308,10 +265,7 @@ async function main() {
             importantLog("[WORKER] An error occurred in the main loop:", error);
             if (error.message.includes('detached Frame')) {
                 importantLog('[WORKER] Detached frame error detected. Resetting browser instance.');
-                // With puppeteer-cluster, we don't reset global browser/page
-                // The cluster manages worker lifecycle.
             }
-            // Wait a bit before retrying to prevent a fast error loop
             await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
