@@ -1,19 +1,21 @@
-feat: Implement robust ChatGPT interaction via Chrome Extension
+feat: Improve Puppeteer Docker environment and D-Bus handling
 
-This commit addresses several issues to enable reliable interaction with ChatGPT via the Chrome Extension:
+This commit addresses persistent issues with the Puppeteer Docker environment, specifically related to D-Bus and Xvfb setup, which caused `dbus-launch` failures and container timeouts.
 
-- **Fixed Chrome Extension DOM manipulation:**
-  - Updated `content.js` to use `document.execCommand("insertText")` for typing into ChatGPT's ProseMirror `contenteditable` div, ensuring React recognizes input changes.
-  - Implemented `MutationObserver` in `content.js` to reliably detect when the ChatGPT send button appears and is enabled, replacing the less robust `setInterval` polling.
-  - Added `simulateTyping` and `simulateClick` helper functions for more realistic event simulation.
-- **Improved Chrome Extension message passing:**
-  - Implemented a content script readiness and message queuing mechanism in `background.js` to ensure messages are only sent to `content.js` when it's ready to receive them, resolving "Receiving end does not exist" errors.
-  - Modified `background.js` to use a more flexible `chrome.tabs.query` to find ChatGPT tabs (supporting both `chatgpt.com` and `chat.openai.com`).
-  - Added `host_permissions` and `all_frames: true`, `run_at: "document_idle"` to `manifest.json` for improved content script injection reliability across different ChatGPT page structures and frames.
-- **Fixed Dashboard `IndentationError`:**
-  - Recreated `dashboard/dashboard_app.py` to resolve persistent `IndentationError`s caused by incorrect indentation of the `if __name__ == "__main__"` block and duplicated route definitions.
-- **Implemented new Dashboard `/send_data` feature:**
-  - Added a new Flask route `/send_data` in `dashboard/dashboard_app.py` to render a dedicated page for sending text to ChatGPT.
-  - Created `dashboard/templates/send_data.html` and `dashboard/static/js/send_data_script.js` to provide a user interface and client-side logic for this feature, utilizing the existing `/api/direct_send_to_extension` endpoint.
-- **Fixed Dashboard navigation:**
-  - Added a "Send Data" link to the main dashboard navigation in `dashboard/templates/index.html`.
+Key changes include:
+- Reverted Dockerfile.puppeteer to use node:18-alpine as base image.
+- Re-introduced dbus and dbus-x11 packages to apk add to ensure D-Bus
+  functionality is available when needed by the Puppeteer worker.
+- Created a custom `start_puppeteer.sh` script to explicitly manage Xvfb
+  startup and the node worker process, bypassing problematic `xvfb-run`
+  behavior on Alpine Linux.
+- Updated `Dockerfile.puppeteer` to use this new startup script.
+- Modified `puppeteer_worker/worker.js` to include D-Bus daemon startup
+  logic and adjusted Puppeteer launch arguments for better compatibility
+  and to explicitly disable D-Bus features where appropriate.
+- Added a new `puppeteer_debug_env/worker.js` for debugging purposes.
+- Simplified `puppeteer_worker/debug_x11.sh` for clearer X11 debugging.
+- Updated `docker-compose.yml` to reflect new volume mounts.
+
+These changes aim to provide a more stable and reliable environment for
+Puppeteer operations within Docker.

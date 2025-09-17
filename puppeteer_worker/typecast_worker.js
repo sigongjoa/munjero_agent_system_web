@@ -92,7 +92,7 @@ async function getBrowser(profileName = 'default') { // Add profileName with a d
 }
 
 async function generateTypecastTTS(page, textToConvert, filename, taskId, redisClient) {
-    importantLog(`[TYPECAST_TTS] Entering generateTypecastTTS for task ${taskId} with text: "${textToConvert.substring(0, 50)}..."`);
+    importantLog(`[TYPECAST_TTS] Entering generateTypecastTTS for task ${taskId} with text: "${textToConvert.substring(0, 50)}"..."`);
 
     try {
         importantLog("[TYPECAST_TTS] Navigating to Typecast editor page...");

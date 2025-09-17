@@ -188,7 +188,7 @@ async function executeTask(task, redisClient) {
             return;
         } else if (task.type === "generate_image_from_prompt") {
             const { prompt, task_id } = task.payload;
-            importantLog(`[CHATGPT_WORKER] Generating image for prompt: "${prompt}" (Task ID: ${task_id})...`);
+            importantLog(`[CHATGPT_WORKER] Generating image for prompt: "${prompt}" (Task ID: ${task_id})...");
 
             try {
                 importantLog("[CHATGPT_WORKER] Navigating to ChatGPT for image generation...");

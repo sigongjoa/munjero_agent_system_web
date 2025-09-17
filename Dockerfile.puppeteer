@@ -1,28 +1,21 @@
-FROM ghcr.io/puppeteer/puppeteer:21.7.0
+FROM ghcr.io/puppeteer/puppeteer:latest
 
-# Skip downloading Chromium, as it's provided by the base image
-ENV PUPPETEER_SKIP_DOWNLOAD=true
+# Set environment variables (adjust PUPPETEER_EXECUTABLE_PATH if needed, but usually not with official image)
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
+# Official image usually has google-chrome
 
-# Set environment variables for X11 (if needed, though the base image might handle this)
-ENV DISPLAY=:0.0
+WORKDIR /app
 
-USER root
-RUN mkdir -p /home/pptruser/app && chown -R pptruser:pptruser /home/pptruser/app
-USER pptruser
-WORKDIR /home/pptruser/app
-
-COPY puppeteer_worker/package*.json ./
+# Copy package.json and install dependencies
+COPY puppeteer_debug_env/package*.json ./
 RUN npm install
 
+# Copy worker files
 COPY puppeteer_worker/debug_x11.sh ./puppeteer_worker/
-USER root
-RUN chown pptruser:pptruser ./puppeteer_worker/debug_x11.sh
-USER pptruser
-RUN chmod +x ./puppeteer_worker/debug_x11.sh
+COPY puppeteer_worker/worker.js ./
+COPY puppeteer_worker/typecast_worker.js ./
+COPY puppeteer_worker/chatgpt_worker.js ./
+COPY puppeteer_worker/quiz_automation_worker.js ./
 
-COPY puppeteer_worker/worker.js ./puppeteer_worker/
-COPY puppeteer_worker/typecast_worker.js ./puppeteer_worker/
-COPY puppeteer_worker/chatgpt_worker.js ./puppeteer_worker/
-COPY puppeteer_worker/quiz_automation_worker.js ./puppeteer_worker/
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "./puppeteer_worker/worker.js"]
+CMD ["node", "worker.js"]

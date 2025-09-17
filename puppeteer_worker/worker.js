@@ -4,6 +4,7 @@ const puppeteer = require("puppeteer-core"); // Re-add puppeteer for initial lau
 const https = require("https");
 const fs = require('fs');
 const util = require('util');
+const { execSync } = require('child_process');
 
 
 const logFile = fs.createWriteStream('./puppeteer_worker_logs.txt', { flags: 'a' });
@@ -99,7 +100,7 @@ async function executeTask({ page, data: task }, redisClient) { // Modified to a
 
                 const elements = await page.evaluate(() => {
                     const all = [];
-                    document.querySelectorAll("*" ).forEach((el) => {
+                    document.querySelectorAll("*").forEach((el) => {
                         try {
                             all.push({
                                 tag: el.tagName.toLowerCase(),
@@ -201,6 +202,15 @@ async function main() {
     importantLog("[WORKER] Starting Puppeteer worker...");
     checkDataDir(); // Call the check here
 
+    // Run X11 debug script
+    try {
+        importantLog("[WORKER] Running X11 debug script...");
+        const debugOutput = execSync('sh /app/puppeteer_worker/debug_x11.sh', { encoding: 'utf8' });
+        importantLog(debugOutput);
+    } catch (error) {
+        importantLog("[WORKER] Error running X11 debug script:", error.message);
+    }
+
     const redisClient = createClient({ url: `redis://${REDIS_HOST}:${REDIS_PORT}` });
     redisClient.on('error', (err) => importantLog('[REDIS] Redis Client Error', err));
     await redisClient.connect();
@@ -211,11 +221,34 @@ async function main() {
         importantLog("[WORKER] Performing initial browser launch test...");
         const testBrowser = await puppeteer.launch({
             headless: false,
-            executablePath: '/usr/bin/chromium',
+            executablePath: 'xvfb-run', // Use xvfb-run
+            dumpio: true, // Dump browser process stdout and stderr to console
             protocolTimeout: 60000, // Increase timeout to 60 seconds
             args: [
+                '--auto-display',
+                '--server-args="-screen 0 1366x768x24"', // Using 1366x768 as per original worker.js
+                '/usr/bin/chromium', // Tell xvfb-run what to launch (corrected path)
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--use-gl=swiftshader',
+                '--disable-features=Dbus',
+                '--disable-features=SystemDbus',
+                '--disable-web-security',
+                '--disable-xss-auditor',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-extensions',
+                '--no-first-run',
+                '--profile-directory=Default',
+                '--disable-accelerated-2d-canvas',
+                '--no-zygote',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--no-pings',
+                '--password-store=basic',
+                '--use-fake-ui-for-media-stream',
+                '--use-mock-keychain'
             ]
         });
         const testPage = await testBrowser.newPage();
@@ -234,10 +267,33 @@ async function main() {
         maxConcurrency: 2,
         puppeteerOptions: {
             headless: false,
-            executablePath: '/usr/bin/chromium',
+            executablePath: 'xvfb-run', // Use xvfb-run
+            dumpio: true, // Dump browser process stdout and stderr to console
             args: [
+                '--auto-display',
+                '--server-args="-screen 0 1366x768x24"', // Using 1366x768 as per original worker.js
+                '/usr/bin/chromium', // Tell xvfb-run what to launch (corrected path)
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--use-gl=swiftshader',
+                '--disable-features=Dbus',
+                '--disable-features=SystemDbus',
+                '--disable-web-security',
+                '--disable-xss-auditor',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-extensions',
+                '--no-first-run',
+                '--profile-directory=Default',
+                '--disable-accelerated-2d-canvas',
+                '--no-zygote',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--no-pings',
+                '--password-store=basic',
+                '--use-fake-ui-for-media-stream',
+                '--use-mock-keychain'
             ]
         },
         userDataDir: './user_data/cluster_profile_%p',
