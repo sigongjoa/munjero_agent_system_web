@@ -1,0 +1,12 @@
+{
+  "name": "puppeteer-debug",
+  "version": "1.0.0",
+  "main": "worker.js",
+  "scripts": {
+    "debug": "node worker.js"
+  },
+  "dependencies": {
+    "puppeteer": "^22.10.0",
+    "redis": "^4.0.0"
+  }
+}

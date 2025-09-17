@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  puppeteer-debug:
+    build:
+      context: .
+      dockerfile: Dockerfile.custom
+    ports:
+      - "9222:9222" # For Chrome DevTools Protocol
+    environment:
+      - DISPLAY=${DISPLAY} # For X11 forwarding to host
+      - PUPPETEER_EXECUTABLE_PATH=/home/pptruser/.cache/puppeteer/chrome/linux-140.0.7339.82/chrome-linux64/chrome
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix # Mount X11 socket
+      - ./user_data:/app/user_data
+    network_mode: "host" # Use host network for X11 forwarding
+    entrypoint: ["/bin/bash", "-c", "npm run debug"]
+    shm_size: '2gb' # Increase shared memory for Chrome
